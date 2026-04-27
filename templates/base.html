@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Reality Sense{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- ── Top Navbar (App Name only) ── -->
+    <header class="top-navbar">
+        <div class="top-navbar-brand">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="top-navbar-img-logo">
+            <span class="top-navbar-name">Reality Sense</span>
+        </div>
+    </header>
+
+    <div class="app-wrapper">
+        <!-- Left Sidebar -->
+        <aside class="right-sidebar">
+            <div class="dashboard-space">
+
+                <nav class="nav-links-vertical">
+                    <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">
+                        <span>🛡️</span> Detect AI
+                    </a>
+                    <a href="{{ url_for('history') }}" class="{{ 'active' if request.endpoint == 'history' }}">
+                        <span>📋</span> File History
+                    </a>
+                </nav>
+
+                <div class="sidebar-footer">
+                    {% if session.get('user') %}
+                    <p class="user-email-text">{{ session['user']['email'] }}</p>
+                    {% endif %}
+                    <a href="{{ url_for('logout') }}" class="logout-link-red">
+                        <span>🚪</span> Sign Out
+                    </a>
+                </div>
+
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

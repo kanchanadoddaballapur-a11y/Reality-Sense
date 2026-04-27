@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Detect AI | Reality Sense{% endblock %}
+
+{% block content %}
+<div class="dashboard-hero">
+    <h1 class="dashboard-title">
+        {% if is_new_user %}
+            Welcome
+        {% else %}
+            Welcome Back
+        {% endif %}
+    </h1>
+    <p class="dashboard-subtitle">Upload a file — uncover the truth in seconds.</p>
+</div>
+
+<div class="dashboard-split">
+    <!-- LEFT: Input Panel -->
+    <div class="panel panel-input">
+        <div class="panel-header">
+            <span class="panel-icon">🔍</span>
+            <span class="panel-label">Input</span>
+        </div>
+
+        <form id="analyze-form">
+            <!-- File Upload -->
+            <div id="file-input-group" class="input-group active">
+                <label class="file-drop-zone" for="file-input" id="file-drop-zone">
+                    <div class="file-drop-icons">🖼️ 🎥 📄 📊</div>
+                    <p class="file-drop-title">Drop your file here</p>
+                    <p class="file-drop-subtitle">or <span class="file-browse-link">click to browse</span></p>
+                    <p class="file-drop-types">Supports: Image · Video · PDF · PPTX · TXT</p>
+                    <input type="file" id="file-input" name="file"
+                        accept="image/*,video/*,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
+                        class="file-input-hidden">
+                </label>
+                <div id="file-preview" class="file-preview hidden">
+                    <div class="file-preview-header">
+                        <span class="file-preview-icon">📎</span>
+                        <span id="file-name" class="file-preview-name"></span>
+                        <button type="button" id="file-clear-btn" class="file-clear-btn">✕</button>
+                    </div>
+                    <!-- Image Thumbnail Area -->
+                    <div id="image-preview-container" class="image-preview-container hidden">
+                        <img id="image-thumbnail" class="image-thumbnail" src="" alt="Preview">
+                        <div id="image-scanner" class="image-scanner hidden">
+                            <div class="image-scan-line"></div>
+                            <div class="image-scan-focus">
+                                <span>[ AI FOCUS ]</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Video Scanner HUD -->
+                <div id="video-scanner" class="video-scanner hidden">
+                    <div class="scanner-container">
+                        <div class="scanner-box">
+                            <div class="scanner-laser"></div>
+                            <div class="scanner-grid"></div>
+                            <div class="scanner-crosshair top-left"></div>
+                            <div class="scanner-crosshair top-right"></div>
+                            <div class="scanner-crosshair bottom-left"></div>
+                            <div class="scanner-crosshair bottom-right"></div>
+                        </div>
+                        <p class="scanner-text" id="scanner-text-display">AI Temporal Analysis in Progress...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submit -->
+            <button type="submit" id="submit-btn" class="primary-btn">
+                <span class="btn-text">Start Analysis</span>
+                <span class="loader hidden"></span>
+            </button>
+        </form>
+
+        <div id="error-message" class="error-message hidden"></div>
+    </div>
+
+    <!-- RIGHT: Result Panel -->
+    <div class="panel panel-result" id="result-panel">
+        <div class="panel-header">
+            <span class="panel-icon">📊</span>
+            <span class="panel-label">Analysis Result</span>
+        </div>
+
+        <div class="result-empty-state" id="result-empty">
+            <div class="empty-icon">🤖</div>
+            <p>Run an analysis to see results here.</p>
+        </div>
+
+        <div id="result-section" class="result-content hidden">
+            <!-- Gauge -->
+            <div class="gauge-wrapper">
+                <svg class="circular-progress" viewBox="0 0 100 100">
+                    <circle class="bg" cx="50" cy="50" r="42"></circle>
+                    <circle class="progress" cx="50" cy="50" r="42"></circle>
+                </svg>
+                <div class="gauge-center">
+                    <div id="probability-value" class="probability-text">0%</div>
+                    <div class="probability-label">AI Probability</div>
+                </div>
+            </div>
+
+            <!-- Verdict Badge -->
+            <div id="verdict-badge" class="verdict-badge"></div>
+
+            <!-- Explanation -->
+            <div class="explanation-container">
+                <h3>Expert Analysis</h3>
+                <p id="explanation-text"></p>
+            </div>
+
+            <!-- Advanced Breakdown Grid -->
+            <div class="advanced-breakdown" id="advanced-breakdown">
+                <div class="breakdown-card">
+                    <div class="breakdown-icon">🧩</div>
+                    <h4>Pattern Consistency</h4>
+                    <p id="pattern-text">--</p>
+                </div>
+                <div class="breakdown-card">
+                    <div class="breakdown-icon">🏗️</div>
+                    <h4>Structural Integrity</h4>
+                    <p id="structure-text">--</p>
+                </div>
+                <div class="breakdown-card">
+                    <div class="breakdown-icon">🌊</div>
+                    <h4>Noise Signature</h4>
+                    <p id="noise-text">--</p>
+                </div>
+                <div class="breakdown-card">
+                    <div class="breakdown-icon">🏷️</div>
+                    <h4>Metadata Validation</h4>
+                    <p id="metadata-text">--</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+{% endblock %}

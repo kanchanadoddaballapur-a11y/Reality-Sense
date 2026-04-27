@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reality Sense | Know What's Real</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body.landing-body {
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .landing-container {
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+            animation: fadeIn 0.8s ease-out forwards;
+        }
+
+        .landing-logo-link {
+            display: inline-block;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+        }
+
+        .landing-logo-link:hover {
+            transform: scale(1.05) translateY(-5px);
+        }
+
+        .landing-logo {
+            width: 180px;
+            height: auto;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(139, 92, 246, 0.2);
+        }
+
+        .landing-title {
+            font-size: 3.5rem;
+            font-weight: 900;
+            margin: 0;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -1.5px;
+        }
+
+        .landing-subtitle {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            margin: 0 0 1rem 0;
+            font-weight: 500;
+            line-height: 1.6;
+        }
+
+        .landing-instruction {
+            font-size: 0.95rem;
+            color: var(--text-light);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 1rem;
+            opacity: 0.7;
+            animation: pulseText 2s infinite ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes pulseText {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="landing-body">
+    <div class="landing-container">
+        <!-- Logo acts as the start button -->
+        <a href="{{ url_for('dashboard') }}" class="landing-logo-link" title="Click to Start">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Reality Sense Logo" class="landing-logo">
+        </a>
+        
+        <h1 class="landing-title">Reality Sense</h1>
+        <p class="landing-subtitle"><strong>Know What's Real.</strong><br>Instantly detect AI-generated content and documents with pinpoint accuracy.</p>
+        
+        <p class="landing-instruction">Click the logo to start</p>
+    </div>
+</body>
+</html>

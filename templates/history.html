@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}History | Reality Sense{% endblock %}
+
+{% block content %}
+<div class="dashboard-hero">
+    <div class="history-page-header">
+        <div>
+            <h1 class="dashboard-title">File History</h1>
+            <p class="dashboard-subtitle">Review your past AI detection results.</p>
+        </div>
+        {% if history %}
+        <form action="{{ url_for('clear_history') }}" method="POST"
+              onsubmit="return confirm('Are you sure you want to clear all history? This cannot be undone.')">
+            <button type="submit" class="clear-history-btn">🗑️ Clear All History</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="flash-success">✅ {{ message }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<div class="history-grid">
+    {% if history %}
+        <div class="history-table-container">
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>AI Probability</th>
+                        <th>Date</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in history %}
+                    <tr class="history-row">
+                        <td class="source-cell">
+                            <span class="file-icon">📄</span>
+                            <span class="source-name">{{ entry.source }}</span>
+                        </td>
+                        <td>
+                            {% set prob_val = entry.probability.replace('%', '') %}
+                            <span class="prob-badge {{ 'high' if prob_val|int > 70 else ('medium' if prob_val|int > 30 else 'low') if prob_val.isdigit() else 'low' }}">
+                                {{ entry.probability }}
+                            </span>
+                        </td>
+                        <td class="date-cell">{{ entry.timestamp.strftime('%b %d, %Y %H:%M') }}</td>
+                        <td>
+                            <button class="view-btn" data-explanation="{{ entry.explanation|forceescape }}" onclick="showExplanation(this.getAttribute('data-explanation'))">View Report</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📁</div>
+            <h2>No history yet</h2>
+            <p>Start by checking some text or files on the Detect page.</p>
+            <a href="{{ url_for('dashboard') }}" class="primary-btn-inline">Analyze Now</a>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Modal for Explanation -->
+<div id="report-modal" class="modal hidden">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Detailed Analysis Report</h2>
+            <button class="close-modal" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="explanation-container">
+                <h3>Expert Analysis</h3>
+                <p id="modal-explanation"></p>
+            </div>
+            
+            <div class="advanced-breakdown" id="modal-advanced-breakdown" style="display: none;">
+                <div class="breakdown-card">
+                    <div class="breakdown-icon">🧩</div>
+                    <h4>Pattern Consistency</h4>
+                    <p id="modal-pattern">--</p>
+                </div>
+                <div class="breakdown-card">
+                    <div class="breakdown-icon">🏗️</div>
+                    <h4>Structural Integrity</h4>
+                    <p id="modal-structure">--</p>
+                </div>
+                <div class="breakdown-card">
+                    <div class="breakdown-icon">🌊</div>
+                    <h4>Noise Signature</h4>
+                    <p id="modal-noise">--</p>
+                </div>
+                <div class="breakdown-card">
+                    <div class="breakdown-icon">🏷️</div>
+                    <h4>Metadata Validation</h4>
+                    <p id="modal-metadata">--</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function showExplanation(textData) {
+        const modal = document.getElementById('report-modal');
+        const explanationEl = document.getElementById('modal-explanation');
+        const breakdownEl = document.getElementById('modal-advanced-breakdown');
+        
+        try {
+            // Try to parse as JSON (New Advanced Reporting)
+            const data = JSON.parse(textData);
+            explanationEl.textContent = data.explanation || 'No explanation provided.';
+            
+            if (data.pattern_consistency) {
+                document.getElementById('modal-pattern').textContent = data.pattern_consistency || '--';
+                document.getElementById('modal-structure').textContent = data.structural_integrity || '--';
+                document.getElementById('modal-noise').textContent = data.noise_signature || '--';
+                document.getElementById('modal-metadata').textContent = data.metadata_validation || '--';
+                breakdownEl.style.display = 'grid';
+            } else {
+                breakdownEl.style.display = 'none';
+            }
+        } catch (e) {
+            // Fallback for old plain text data
+            explanationEl.textContent = textData;
+            breakdownEl.style.display = 'none';
+        }
+        
+        modal.classList.remove('hidden');
+    }
+    
+    function closeModal() {
+        document.getElementById('report-modal').classList.add('hidden');
+    }
+    
+    // Close on outside click
+    window.onclick = function(event) {
+        const modal = document.getElementById('report-modal');
+        if (event.target == modal) {
+            closeModal();
+        }
+    }
+</script>
+{% endblock %}
