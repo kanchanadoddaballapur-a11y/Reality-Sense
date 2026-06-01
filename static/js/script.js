@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultSection   = document.getElementById('result-section');
     const resultEmpty     = document.getElementById('result-empty');
     const errorMessage    = document.getElementById('error-message');
+    const sampleBtn       = document.getElementById('sample-btn');
 
     // Result elements
     const probabilityValue = document.getElementById('probability-value');
@@ -19,11 +20,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const verdictBadge     = document.getElementById('verdict-badge');
 
     // ─── File Input: show preview ─────────────────────────────
-    fileInput.addEventListener('change', () => {
-        if (fileInput.files.length > 0) {
-            showFilePreview(fileInput.files[0]);
-        }
-    });
+    if (fileInput) {
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                showFilePreview(fileInput.files[0]);
+            }
+        });
+    }
 
     // ─── File Clear Button ────────────────────────────────────
     fileClearBtn && fileClearBtn.addEventListener('click', clearFile);
@@ -84,69 +87,71 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─── Form Submission ──────────────────────────────────────
-    form.addEventListener('submit', async (e) => {
-        console.log('Form submission started');
-        e.preventDefault();
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            console.log('Form submission started');
+            e.preventDefault();
 
-        hideResult();
-        errorMessage.classList.add('hidden');
+            hideResult();
+            errorMessage.classList.add('hidden');
 
-        const hasFile  = fileInput.files.length > 0;
+            const hasFile  = fileInput.files.length > 0;
 
-        if (!hasFile) { showError('Please select a file to analyze.'); return; }
+            if (!hasFile) { showError('Please select a file to analyze.'); return; }
 
-        // Loading state
-        submitBtn.disabled = true;
-        btnText.textContent = 'Analyzing...';
-        loader.classList.remove('hidden');
-        
-        const videoScanner = document.getElementById('video-scanner');
-        const imageScanner = document.getElementById('image-scanner');
-        const scannerTextDisplay = document.getElementById('scanner-text-display');
-        
-        const isVideo = hasFile && fileInput.files[0].type.startsWith('video/');
-        const isImage = hasFile && fileInput.files[0].type.startsWith('image/');
-        
-        if (isVideo && videoScanner) videoScanner.classList.remove('hidden');
-        if (isImage && imageScanner) imageScanner.classList.remove('hidden');
+            // Loading state
+            submitBtn.disabled = true;
+            btnText.textContent = 'Analyzing...';
+            loader.classList.remove('hidden');
+            
+            const videoScanner = document.getElementById('video-scanner');
+            const imageScanner = document.getElementById('image-scanner');
+            const scannerTextDisplay = document.getElementById('scanner-text-display');
+            
+            const isVideo = hasFile && fileInput.files[0].type.startsWith('video/');
+            const isImage = hasFile && fileInput.files[0].type.startsWith('image/');
+            
+            if (isVideo && videoScanner) videoScanner.classList.remove('hidden');
+            if (isImage && imageScanner) imageScanner.classList.remove('hidden');
 
-        let msgs = ['Scanning patterns…', 'Verifying authenticity…', 'Analyzing metadata…', 'Generating report…'];
-        if (isVideo) {
-            msgs = [
-                'Uploading video...', 
-                'Processing video frames (this may take up to a minute)...', 
-                'Scanning for temporal AI artifacts...', 
-                'Verifying physics & consistency...',
-                'Still analyzing, please be patient...',
-                'Generating final AI report...'
-            ];
-        }
-        
-        let msgIdx = 0;
-        const msgTimer = setInterval(() => {
-            const nextMsg = msgs[msgIdx++ % msgs.length];
-            if (submitBtn.disabled) { 
-                btnText.textContent = nextMsg; 
-                if (isVideo && scannerTextDisplay) scannerTextDisplay.textContent = nextMsg;
+            let msgs = ['Scanning patterns…', 'Verifying authenticity…', 'Analyzing metadata…', 'Generating report…'];
+            if (isVideo) {
+                msgs = [
+                    'Uploading video...', 
+                    'Processing video frames (this may take up to a minute)...', 
+                    'Scanning for temporal AI artifacts...', 
+                    'Verifying physics & consistency...',
+                    'Still analyzing, please be patient...',
+                    'Generating final AI report...'
+                ];
             }
-        }, 4000);
+            
+            let msgIdx = 0;
+            const msgTimer = setInterval(() => {
+                const nextMsg = msgs[msgIdx++ % msgs.length];
+                if (submitBtn.disabled) { 
+                    btnText.textContent = nextMsg; 
+                    if (isVideo && scannerTextDisplay) scannerTextDisplay.textContent = nextMsg;
+                }
+            }, 4000);
 
-        try {
-            const response = await fetch('/analyze', { method: 'POST', body: new FormData(form) });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'An error occurred during analysis.');
-            displayResult(data);
-        } catch (err) {
-            showError(err.message);
-        } finally {
-            clearInterval(msgTimer);
-            submitBtn.disabled = false;
-            btnText.textContent = 'Start Analysis';
-            loader.classList.add('hidden');
-            if (videoScanner) videoScanner.classList.add('hidden');
-            if (imageScanner) imageScanner.classList.add('hidden');
-        }
-    });
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: new FormData(form) });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'An error occurred during analysis.');
+                displayResult(data);
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                clearInterval(msgTimer);
+                submitBtn.disabled = false;
+                btnText.textContent = 'Start Analysis';
+                loader.classList.add('hidden');
+                if (videoScanner) videoScanner.classList.add('hidden');
+                if (imageScanner) imageScanner.classList.add('hidden');
+            }
+        });
+    }
 
     // ─── Display Result ───────────────────────────────────────
     function displayResult(data) {
