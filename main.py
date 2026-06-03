@@ -139,8 +139,10 @@ Return ONLY a JSON object in this format:
     # gemini-flash-latest does NOT support JSON mode and returns empty/broken JSON.
     # We parse JSON manually from the text response instead.
     models_to_try = [
-        'models/gemini-2.5-flash',      # Fast, reliable, great at JSON
-        'models/gemini-2.5-pro',        # High accuracy fallback
+        'models/gemini-2.5-flash',      # Primary fast model
+        'models/gemini-2.5-pro',        # Primary pro model
+        'models/gemini-1.5-flash',      # Fallback fast model (separate rate limit bucket)
+        'models/gemini-1.5-pro',        # Fallback pro model (separate rate limit bucket)
     ]
     
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -209,6 +211,10 @@ Return ONLY a JSON object in this format:
             print(f"DEBUG ERROR: {err_msg}")
             errors.append(err_msg)
             continue
+            
+    is_all_quota = all('429' in e or 'quota' in e.lower() or 'resource_exhausted' in e.lower() for e in errors)
+    if is_all_quota and errors:
+        return {"error": "Google Gemini API rate limit exceeded. Please wait 30-60 seconds before trying again, or upgrade your Google AI Studio API key to the Pay-As-You-Go plan to remove this limit."}
             
     return {"error": f"AI analysis failed. Details: {'; '.join(errors)}"}
 
