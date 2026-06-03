@@ -200,8 +200,9 @@ def analyze_multimodal(content_parts):
 
             response = client.models.generate_content(
                 model=model_name,
-                contents=[system_prompt] + sdk_parts,
+                contents=sdk_parts,
                 config=genai_types.GenerateContentConfig(
+                    system_instruction=system_prompt,
                     max_output_tokens=2048,
                     temperature=0.0
                 )
