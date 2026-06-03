@@ -134,16 +134,13 @@ Return ONLY a JSON object in this format:
   "explanation": "Clear, objective explanation of the rating."
 }"""
     
-    # Use full model path prefix (confirmed working in test_gemini.py)
-    # NOTE: response_mime_type="application/json" is NOT used because
-    # gemini-flash-latest does NOT support JSON mode and returns empty/broken JSON.
-    # We parse JSON manually from the text response instead.
+    # Configure model names without 'models/' prefix (required by new SDK)
     models_to_try = [
-        'models/gemini-2.5-flash',      # Primary fast model
-        'models/gemini-2.5-pro',        # Primary pro model
-        'models/gemini-1.5-flash',      # Fallback fast model (separate rate limit bucket)
-        'models/gemini-1.5-pro',        # Fallback pro model (separate rate limit bucket)
-        'models/gemini-1.5-flash-8b',   # Ultra-fast fallback model
+        'gemini-2.5-flash',             # Primary fast model
+        'gemini-2.5-pro',               # Primary pro model
+        'gemini-1.5-flash',             # Fallback fast model (separate rate limit bucket)
+        'gemini-1.5-pro',               # Fallback pro model (separate rate limit bucket)
+        'gemini-1.5-flash-8b',          # Ultra-fast fallback model
     ]
     
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -167,7 +164,8 @@ Return ONLY a JSON object in this format:
                 else:
                     sdk_parts.append(part)
 
-            # Try with system_instruction first, fallback to inline prompt
+            # Try with system_instruction first, fallback to inline prompt.
+            # We set response_mime_type="application/json" to guarantee valid JSON formatting.
             try:
                 response = client.models.generate_content(
                     model=model_name,
@@ -175,7 +173,8 @@ Return ONLY a JSON object in this format:
                     config=genai_types.GenerateContentConfig(
                         system_instruction=system_prompt,
                         max_output_tokens=2048,
-                        temperature=0.0
+                        temperature=0.0,
+                        response_mime_type="application/json"
                     )
                 )
             except Exception as sys_err:
@@ -185,7 +184,8 @@ Return ONLY a JSON object in this format:
                     contents=[system_prompt] + sdk_parts,
                     config=genai_types.GenerateContentConfig(
                         max_output_tokens=2048,
-                        temperature=0.0
+                        temperature=0.0,
+                        response_mime_type="application/json"
                     )
                 )
 
