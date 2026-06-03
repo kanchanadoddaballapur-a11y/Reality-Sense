@@ -110,72 +110,25 @@ def analyze_multimodal(content_parts):
     
     # genai.configure already done above
     
-    system_prompt = """
-    You are an expert forensic AI Detection system. Your job is to analyze the provided content and determine with high confidence whether it was created or significantly assisted by AI tools.
+    system_prompt = """You are an AI content detector. Analyze the content and determine if it was made by AI.
 
-    CRITICAL CALIBRATION RULES:
-    - For VIDEOS: Be AGGRESSIVE. Stock footage assembly across unrelated scenes is a near-certain AI signature. Default to HIGH probability unless the video clearly shows a continuous, unedited real-world recording.
-    - For PRESENTATIONS (PPT): Be LENIENT. Bullet points and short slide text are NORMAL for humans. Only flag as AI if the text reads like ChatGPT output (generic, padded, impersonal).
-    - For IMAGES: Be PRECISE. Real photos have natural imperfections. Flag only clear AI artifacts.
-    - For TEXT/DOCUMENTS: Look for the absence of personal voice, specific details, and natural writing variation.
+RULES:
+- If watermarks from InVideo, Runway, Pika, Sora, HeyGen, Synthesia, Pictory, DALL-E, Midjourney etc. are visible → 99% AI.
+- VIDEO FRAMES: Multiple images from same video. If scenes/people change drastically between frames = stock footage assembly = 90%+ AI. Continuous real-world footage = low AI.
+- IMAGES: Look for AI artifacts (extra fingers, warped details, too-smooth skin, perfect symmetry). Real photos have natural imperfections.
+- PPT/SLIDES text: Bullet points are NORMAL for humans. Only flag if text is generic ChatGPT-style filler with no personal details. Human PPTs typically score under 15%.
+- DOCUMENTS: Check writing style. Generic, repetitive, impersonal = AI. Specific details, personal voice, natural variation = human.
 
-    STEP 1 — WATERMARK SCAN (HIGHEST PRIORITY):
-    Scan ALL corners and edges of every frame for ANY watermarks, logos, or text from AI tools including:
-    InVideo, Instudio, Runway, Pika, Sora, HeyGen, D-ID, Synthesia, Pictory, Steve.ai, Lumen5, Fliki, Canva AI, CapCut AI, Adobe Firefly, DALL-E, Midjourney.
-    If ANY such watermark is detected → probability MUST be "99%".
-
-    STEP 2 — AI VIDEO DETECTION (for video frames):
-    You are receiving multiple keyframes extracted from a video. Analyze them collectively.
-    
-    CHECK FOR THESE AI VIDEO SIGNATURES:
-    A) STOCK FOOTAGE ASSEMBLY (InVideo, Pictory, Lumen5 style):
-       - Frames show unrelated clips stitched together with no continuity of people or location
-       - Text overlays, lower-thirds, or titles appear too perfect and polished
-       - Background music feels generic (cannot see but infer from visuals being designed around audio beats)
-       - People shown are clearly stock models in generic office/lifestyle settings
-       - Scene cuts are abrupt with completely different environments across frames
-    
-    B) DEEPFAKE / AI AVATAR (HeyGen, D-ID, Synthesia style):
-       - Talking head that never moves from its position
-       - Background is a solid color, virtual office, or too-perfect studio
-       - Lip sync artifacts, unnatural blinking rate, or glassy eyes
-       - Skin texture is too smooth and plastic-looking
-    
-    C) AI-GENERATED VISUALS (Sora, Runway, Pika style):
-       - Unnatural object physics or floating elements
-       - Morphing or dissolving textures between frames
-       - Impossible camera movements
-       - Inconsistent lighting across the same scene
-    
-    D) AI SLIDESHOW VIDEO (Canva AI, PowerPoint AI):
-       - Frames show slide-like compositions with text + stock image combinations
-       - No natural camera movement, only static or Ken Burns effect slides
-
-    STEP 3 — IMAGE DETECTION:
-    Look for AI artifacts: extra fingers, warped backgrounds, unrealistic textures, perfect symmetry, missing reflections, skin that is too smooth.
-
-    STEP 4 — TEXT/DOCUMENT DETECTION:
-    Look for: repetitive sentence structures, lack of personal anecdotes, overly formal generic language, no typos or natural flow variation.
-
-    IMPORTANT: Be STRICT and DECISIVE. Do NOT say "uncertain" if multiple AI signatures are present. If 2 or more signals from the above list are detected, the probability should be above 80%.
-
-    Return the response ONLY as a valid JSON object with these exact keys:
-    - "probability": "XX%" (string, e.g. "92%")
-    - "pattern_consistency": "One sentence describing visual/text pattern consistency."
-    - "structural_integrity": "One sentence about structural coherence."
-    - "noise_signature": "One sentence about noise or artifact pattern."
-    - "metadata_validation": "One sentence about metadata or watermark findings."
-    - "explanation": "One clear expert sentence summarizing the verdict."
-    """
+Return ONLY valid JSON:
+{"probability":"XX%","pattern_consistency":"...","structural_integrity":"...","noise_signature":"...","metadata_validation":"...","explanation":"..."}"""
     
     # Use full model path prefix (confirmed working in test_gemini.py)
     # NOTE: response_mime_type="application/json" is NOT used because
     # gemini-flash-latest does NOT support JSON mode and returns empty/broken JSON.
     # We parse JSON manually from the text response instead.
     models_to_try = [
-        'models/gemini-2.5-pro',        # High accuracy - best reasoning and detail scanning
-        'models/gemini-2.5-flash',      # Fast fallback - clean JSON responses
-        'models/gemini-flash-latest',   # Legacy fallback
+        'models/gemini-2.5-flash',      # Fast, reliable, great at JSON
+        'models/gemini-2.5-pro',        # High accuracy fallback
     ]
     
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -198,18 +151,30 @@ def analyze_multimodal(content_parts):
                 else:
                     sdk_parts.append(part)
 
-            response = client.models.generate_content(
-                model=model_name,
-                contents=sdk_parts,
-                config=genai_types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    max_output_tokens=2048,
-                    temperature=0.0
+            # Try with system_instruction first, fallback to inline prompt
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=sdk_parts,
+                    config=genai_types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        max_output_tokens=2048,
+                        temperature=0.0
+                    )
                 )
-            )
+            except Exception as sys_err:
+                print(f"DEBUG: system_instruction failed for {model_name}: {sys_err}, trying inline prompt")
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[system_prompt] + sdk_parts,
+                    config=genai_types.GenerateContentConfig(
+                        max_output_tokens=2048,
+                        temperature=0.0
+                    )
+                )
 
             raw_text = response.text.strip()
-            print(f"DEBUG: Model {model_name} raw response (first 200 chars): {raw_text[:200]}")
+            print(f"DEBUG: Model {model_name} raw response (first 300 chars): {raw_text[:300]}")
 
             # Strip markdown code fences if present
             if "```json" in raw_text:
