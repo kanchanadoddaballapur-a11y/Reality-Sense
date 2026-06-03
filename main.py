@@ -163,13 +163,11 @@ Return ONLY a JSON object in this format:
   "explanation": "Clear, objective explanation of the rating."
 }"""
     
-    # Configure model names without 'models/' prefix (required by new SDK)
+    # Configure model names - gemini-2.0-flash as fallback (same free tier, different quota bucket)
     models_to_try = [
         'gemini-2.5-flash',             # Primary fast model
-        'gemini-2.5-pro',               # Primary pro model
-        'gemini-1.5-flash',             # Fallback fast model (separate rate limit bucket)
-        'gemini-1.5-pro',               # Fallback pro model (separate rate limit bucket)
-        'gemini-1.5-flash-8b',          # Ultra-fast fallback model
+        'gemini-2.0-flash',             # Fallback - separate quota bucket
+        'gemini-2.0-flash-lite',        # Lightest fallback model
     ]
     
     client = genai.Client(api_key=GEMINI_API_KEY)
