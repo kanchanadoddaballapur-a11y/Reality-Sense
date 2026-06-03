@@ -462,6 +462,12 @@ Now analyze the following frames:"""
                     if not text:
                         return jsonify({"error": "Could not extract text from document."}), 400
                     
+                    # Truncate to stay within Gemini input token limits (~12,000 chars ≈ 3,000 tokens)
+                    MAX_CHARS = 12000
+                    was_truncated = len(text) > MAX_CHARS
+                    if was_truncated:
+                        text = text[:MAX_CHARS] + "\n\n[NOTE: Document was truncated to fit analysis limits. The above is a representative sample.]"
+                    
                     ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'txt'
                     if ext == 'pptx':
                         doc_context = f"""IMPORTANT CONTEXT: The following is text extracted from a PowerPoint presentation file named '{file.filename}'.
