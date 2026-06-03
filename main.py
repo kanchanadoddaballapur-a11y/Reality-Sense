@@ -75,6 +75,7 @@ google = oauth.register(
 )
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Admin123")
 
@@ -139,11 +140,6 @@ def extract_text_from_bytes(file_bytes, filename):
 # google.genai client is instantiated per-call in analyze_multimodal
 
 def analyze_multimodal(content_parts):
-    if not GEMINI_API_KEY:
-        return {"error": "Gemini API key not found."}
-    
-    # genai.configure already done above
-    
     system_prompt = """You are an expert AI content detection assistant. Your job is to analyze the provided content (text, image frames, or document text) and determine the probability that it was generated or assembled by AI.
 
 CALIBRATION RULES (CRITICAL):
@@ -162,8 +158,71 @@ Return ONLY a JSON object in this format:
   "metadata_validation": "Brief note on file signatures or stylistic markers.",
   "explanation": "Clear, objective explanation of the rating."
 }"""
+
+    if GROQ_API_KEY:
+        try:
+            print("DEBUG Groq: Initializing Groq client...")
+            from groq import Groq
+            client = Groq(api_key=GROQ_API_KEY)
+            
+            # Separate text and image payloads
+            text_parts = []
+            image_parts = []
+            for part in content_parts:
+                if isinstance(part, str):
+                    text_parts.append(part)
+                elif isinstance(part, dict) and 'data' in part:
+                    image_parts.append(part)
+            
+            combined_text = "\n".join(text_parts)
+            messages = [
+                {"role": "system", "content": system_prompt.strip()}
+            ]
+            
+            if image_parts:
+                # Use Groq's active vision model
+                model_name = "meta-llama/llama-4-scout-17b-16e-instruct"
+                content_payload = []
+                if combined_text:
+                    content_payload.append({"type": "text", "text": f"Please analyze this content:\n\n{combined_text}"})
+                else:
+                    content_payload.append({"type": "text", "text": "Please analyze this uploaded visual media content."})
+                    
+                # Groq supports up to 5 images per request
+                for img in image_parts[:5]:
+                    content_payload.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{img['mime_type']};base64,{img['data']}"
+                        }
+                    })
+                messages.append({"role": "user", "content": content_payload})
+            else:
+                # Use Groq's active text model
+                model_name = "llama-3.3-70b-versatile"
+                messages.append({"role": "user", "content": combined_text})
+                
+            print(f"DEBUG Groq: Sending request to model {model_name}...")
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                response_format={"type": "json_object"},
+                temperature=0.1,
+                max_tokens=1024
+            )
+            
+            raw_text = response.choices[0].message.content.strip()
+            print(f"DEBUG Groq: Successful analysis with {model_name}.")
+            result = parse_loose_json(raw_text)
+            return result
+            
+        except Exception as e:
+            print(f"DEBUG ERROR Groq failed: {str(e)}. Attempting Gemini fallback...")
+
+    # Gemini Fallback if Groq is not set or failed
+    if not GEMINI_API_KEY:
+        return {"error": "API key not found. Please set GROQ_API_KEY or GEMINI_API_KEY in Render settings."}
     
-    # Configure model names - gemini-2.0-flash as fallback (same free tier, different quota bucket)
     models_to_try = [
         'gemini-2.5-flash',             # Primary fast model
         'gemini-2.0-flash',             # Fallback - separate quota bucket
@@ -191,8 +250,7 @@ Return ONLY a JSON object in this format:
                 else:
                     sdk_parts.append(part)
 
-            # Try with system_instruction first, fallback to inline prompt.
-            # We set response_mime_type="application/json" to guarantee valid JSON formatting.
+            # Try with system_instruction first, fallback to inline prompt
             try:
                 response = client.models.generate_content(
                     model=model_name,
@@ -217,22 +275,20 @@ Return ONLY a JSON object in this format:
                 )
 
             raw_text = response.text.strip()
-            print(f"DEBUG: Model {model_name} raw response (first 300 chars): {raw_text[:300]}")
+            print(f"DEBUG Gemini: Model {model_name} response: {raw_text[:200]}")
 
-            # Strip markdown code fences if present
             if "```json" in raw_text:
                 raw_text = raw_text.split("```json")[1].split("```")[0].strip()
             elif "```" in raw_text:
                 raw_text = raw_text.split("```")[1].split("```")[0].strip()
 
-            # Extract the JSON object from anywhere in the response
             start_idx = raw_text.find('{')
             end_idx = raw_text.rfind('}')
             if start_idx != -1 and end_idx != -1:
                 raw_text = raw_text[start_idx:end_idx+1]
 
             result = parse_loose_json(raw_text)
-            print(f"DEBUG: Analysis succeeded with model {model_name}")
+            print(f"DEBUG Gemini: Analysis succeeded with model {model_name}")
             return result
         except Exception as e:
             err_msg = f"{model_name}: {str(e)}"
@@ -471,13 +527,13 @@ Now analyze the following frames:"""
                 if file_size > 100 * 1024 * 1024: # 100MB limit
                     return jsonify({"error": "File too large. Please upload files under 100MB."}), 400
                 
-                # Text-based documents (Word, PPT, TXT)
-                if mime_type in ['text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']:
+                # Text-based documents (Word, PPT, TXT, PDF)
+                if mime_type in ['text/plain', 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']:
                     text = extract_text_from_bytes(file_bytes, file.filename)
                     if not text:
                         return jsonify({"error": "Could not extract text from document."}), 400
                     
-                    # Truncate to stay within Gemini input token limits (~12,000 chars ≈ 3,000 tokens)
+                    # Truncate to stay within input token limits (~12,000 chars ≈ 3,000 tokens)
                     MAX_CHARS = 12000
                     was_truncated = len(text) > MAX_CHARS
                     if was_truncated:
@@ -496,15 +552,15 @@ CRITICAL NOTE FOR PPT ANALYSIS:
 
 Presentation text follows:\n"""
                         content_parts.append(doc_context + text)
-                    elif ext == 'docx':
-                        doc_context = f"""IMPORTANT CONTEXT: The following is text extracted from a Word document named '{file.filename}'.
+                    elif ext in ['docx', 'pdf']:
+                        doc_context = f"""IMPORTANT CONTEXT: The following is text extracted from a {ext.upper()} document named '{file.filename}'.
 Analyze the writing style carefully. Look for lack of personal voice, overly generic explanations, repetitive structure, and absence of specific real-world details as AI signals.\n"""
                         content_parts.append(doc_context + text)
                     else:
                         content_parts.append(text)
                 
-                # Images, Videos, & PDFs (Multimodal)
-                elif mime_type.startswith('image/') or mime_type.startswith('video/') or mime_type == 'application/pdf':
+                # Images & Videos (Multimodal)
+                elif mime_type.startswith('image/') or mime_type.startswith('video/'):
                     if mime_type.startswith('video/'):
                         print(f"Uploading video via File API for fast, accurate analysis...")
                         temp_path = f"temp_{file.filename}"
@@ -530,23 +586,8 @@ Analyze the writing style carefully. Look for lack of personal voice, overly gen
                         finally:
                             if os.path.exists(temp_path): os.remove(temp_path)
                             
-                    elif mime_type == 'application/pdf' and file_size > 10 * 1024 * 1024:
-                        print(f"Using File API for large PDF ({file_size} bytes)...")
-                        temp_path = f"temp_{file.filename}"
-                        file.save(temp_path)
-                        uploaded_file = genai.upload_file(path=temp_path, display_name=file.filename)
-                        
-                        import time
-                        while uploaded_file.state.name == "PROCESSING":
-                            time.sleep(2)
-                            uploaded_file = genai.get_file(uploaded_file.name)
-                        
-                        if uploaded_file.state.name == "FAILED":
-                            return jsonify({"error": "AI file processing failed."}), 500
-                            
-                        content_parts.append(uploaded_file)
-                        if os.path.exists(temp_path): os.remove(temp_path)
                     else:
+                        # Image file processing
                         if mime_type.startswith('image/'):
                             from PIL import Image
                             import io
