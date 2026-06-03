@@ -13,6 +13,7 @@ from authlib.integrations.flask_client import OAuth
 from google import genai
 from google.genai import types as genai_types
 import base64
+import hashlib
 
 load_dotenv(override=True)
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
@@ -22,7 +23,11 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key")
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+
+db_url = os.getenv("DATABASE_URL", "sqlite:///users.db")
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024 # 100MB Limit
 app.permanent_session_lifetime = timedelta(days=30)
@@ -46,6 +51,7 @@ class Analysis(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     source = db.Column(db.String(200), nullable=False)
+    file_hash = db.Column(db.String(64), nullable=True)
     probability = db.Column(db.String(10), nullable=False)
     explanation = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
@@ -159,7 +165,7 @@ def analyze_multimodal(content_parts):
                 contents=[system_prompt] + sdk_parts,
                 config=genai_types.GenerateContentConfig(
                     max_output_tokens=2048,
-                    temperature=0.1
+                    temperature=0.0
                 )
             )
 
@@ -289,6 +295,18 @@ def clear_history():
         flash('History cleared successfully.')
     return redirect(url_for('history'))
 
+@app.route('/history/delete/<int:analysis_id>', methods=['POST'])
+@login_required
+def delete_single_history(analysis_id):
+    user = User.query.filter_by(email=session['user']['email']).first()
+    if user:
+        analysis = Analysis.query.filter_by(id=analysis_id, user_id=user.id).first()
+        if analysis:
+            db.session.delete(analysis)
+            db.session.commit()
+            flash('Item deleted successfully.')
+    return redirect(url_for('history'))
+
 @app.route('/logout')
 def logout():
     session.clear()
@@ -318,13 +336,29 @@ def analyze():
     source_name = "Pasted Text"
     
     try:
+        user = User.query.filter_by(email=session['user']['email']).first()
+        file_hash = None
+        
         if 'text' in request.form and request.form['text'].strip():
-            content_parts.append(request.form['text'].strip())
+            text_input = request.form['text'].strip()
+            file_hash = hashlib.md5(text_input.encode('utf-8')).hexdigest()
+            content_parts.append(text_input)
         elif 'file' in request.files:
             file = request.files['file']
             if file.filename != '':
                 source_name = file.filename
                 mime_type = file.content_type
+                
+                file_bytes = file.read()
+                file_hash = hashlib.md5(file_bytes).hexdigest()
+                file.seek(0)
+                
+                # Check cache before heavy processing
+                if user and file_hash:
+                    cached = Analysis.query.filter_by(user_id=user.id, file_hash=file_hash).first()
+                    if cached:
+                        print(f"Returning cached analysis for {file_hash}")
+                        return jsonify(json.loads(cached.explanation))
                 
                 # Check file size (Gemini API limit is around 20MB for inline data)
                 file.seek(0, os.SEEK_END)
@@ -413,11 +447,11 @@ def analyze():
             return jsonify(result), 500
             
         # Save to Database
-        user = User.query.filter_by(email=session['user']['email']).first()
         if user:
             new_analysis = Analysis(
                 user_id=user.id,
                 source=source_name,
+                file_hash=file_hash,
                 probability=result.get("probability", "0%"),
                 explanation=json.dumps(result)  # Store full JSON for advanced reporting
             )

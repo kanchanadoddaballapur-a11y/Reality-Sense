@@ -51,8 +51,11 @@
                             </span>
                         </td>
                         <td class="date-cell">{{ entry.timestamp.strftime('%b %d, %Y %H:%M') }}</td>
-                        <td>
+                        <td style="display: flex; gap: 8px;">
                             <button class="view-btn" data-explanation="{{ entry.explanation|forceescape }}" onclick="showExplanation(this.getAttribute('data-explanation'))">View Report</button>
+                            <form action="{{ url_for('delete_single_history', analysis_id=entry.id) }}" method="POST" style="margin: 0;">
+                                <button type="submit" class="clear-history-btn" style="padding: 8px 12px; font-size: 0.85rem; height: 100%;" title="Delete this analysis">🗑️</button>
+                            </form>
                         </td>
                     </tr>
                     {% endfor %}
