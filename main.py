@@ -1,6 +1,7 @@
 import os
 import json
 import io
+import re
 import docx
 import PyPDF2
 import pptx
@@ -76,6 +77,34 @@ google = oauth.register(
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Admin123")
+
+def parse_loose_json(text):
+    # Try standard json loads first
+    try:
+        return json.loads(text)
+    except Exception as je:
+        print(f"Standard JSON parsing failed: {je}. Trying loose regex parsing.")
+        
+    result = {}
+    keys = ["probability", "pattern_consistency", "structural_integrity", "noise_signature", "metadata_validation", "explanation"]
+    for key in keys:
+        pattern = rf'"{key}"\s*:\s*"(.*?)"(?=\s*(?:,|\}}))'
+        match = re.search(pattern, text, re.DOTALL)
+        if match:
+            val = match.group(1).strip()
+            val = val.replace('\\"', '"')
+            result[key] = val
+        else:
+            result[key] = "Data unavailable."
+            
+    prob = result.get("probability", "0%")
+    prob_match = re.search(r'\d+%', prob)
+    if prob_match:
+        result["probability"] = prob_match.group(0)
+    else:
+        result["probability"] = "0%"
+        
+    return result
 
 def extract_text_from_bytes(file_bytes, filename):
     text = ""
@@ -204,7 +233,7 @@ Return ONLY a JSON object in this format:
             if start_idx != -1 and end_idx != -1:
                 raw_text = raw_text[start_idx:end_idx+1]
 
-            result = json.loads(raw_text)
+            result = parse_loose_json(raw_text)
             print(f"DEBUG: Analysis succeeded with model {model_name}")
             return result
         except Exception as e:
