@@ -1,5 +1,6 @@
 import os
 import json
+import io
 import docx
 import PyPDF2
 import pptx
@@ -17,6 +18,8 @@ import hashlib
 
 load_dotenv(override=True)
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+CACHE_VERSION = "v4"
 
 # Disable SSL verification globally for local environment issues
 # SSL verification is handled by the system; manual clearing is disabled to avoid breaking gRPC.
@@ -74,25 +77,27 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Admin123")
 
-def extract_text_from_file(file, filename):
+def extract_text_from_bytes(file_bytes, filename):
     text = ""
+    if not filename or '.' not in filename:
+        return ""
     ext = filename.rsplit('.', 1)[1].lower()
     
     try:
         if ext == 'txt':
-            text = file.read().decode('utf-8')
+            text = file_bytes.decode('utf-8', errors='ignore')
         elif ext == 'pdf':
-            pdf_reader = PyPDF2.PdfReader(file)
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
             for page in pdf_reader.pages:
                 extracted = page.extract_text()
                 if extracted:
                     text += extracted + "\n"
         elif ext == 'docx':
-            doc = docx.Document(file)
+            doc = docx.Document(io.BytesIO(file_bytes))
             for para in doc.paragraphs:
                 text += para.text + "\n"
         elif ext == 'pptx':
-            prs = pptx.Presentation(file)
+            prs = pptx.Presentation(io.BytesIO(file_bytes))
             for slide in prs.slides:
                 for shape in slide.shapes:
                     if hasattr(shape, "text"):
@@ -110,17 +115,24 @@ def analyze_multimodal(content_parts):
     
     # genai.configure already done above
     
-    system_prompt = """You are an AI content detector. Analyze the content and determine if it was made by AI.
+    system_prompt = """You are an expert AI content detection assistant. Your job is to analyze the provided content (text, image frames, or document text) and determine the probability that it was generated or assembled by AI.
 
-RULES:
-- If watermarks from InVideo, Runway, Pika, Sora, HeyGen, Synthesia, Pictory, DALL-E, Midjourney etc. are visible → 99% AI.
-- VIDEO FRAMES: Multiple images from same video. If scenes/people change drastically between frames = stock footage assembly = 90%+ AI. Continuous real-world footage = low AI.
-- IMAGES: Look for AI artifacts (extra fingers, warped details, too-smooth skin, perfect symmetry). Real photos have natural imperfections.
-- PPT/SLIDES text: Bullet points are NORMAL for humans. Only flag if text is generic ChatGPT-style filler with no personal details. Human PPTs typically score under 15%.
-- DOCUMENTS: Check writing style. Generic, repetitive, impersonal = AI. Specific details, personal voice, natural variation = human.
+CALIBRATION RULES (CRITICAL):
+- Human-created PowerPoint/Slides (PPTX): Slides naturally contain short bullet points, titles, and fragments. This is human style, not AI. Rate human PPTX text under 10% AI.
+- Human-written Word Documents (DOCX/PDF/TXT): Look for natural human tone, specific details, personal voice, and names. AI text is overly polished, repetitive, uses transition words ("furthermore", "in conclusion"), and has a robotic, neutral tone. Human documents must be rated under 15% AI.
+- Assembled AI Videos (InVideo, Pictory, Runway, Sora): If a video consists of stitched-together stock footage clips with scene/people/location changes between frames, or has watermarks, it is AI-assembled. Rate it 90% to 100% AI.
+- Real-world/Authentic Videos: Continuous footage of a real person/event without stock-footage stitching must be rated under 10% AI.
+- Authentic Images/Photos: Photos with natural camera noise, lighting variation, and real human details (correct fingers, face symmetry, imperfect lines) must be rated under 10% AI.
 
-Return ONLY valid JSON:
-{"probability":"XX%","pattern_consistency":"...","structural_integrity":"...","noise_signature":"...","metadata_validation":"...","explanation":"..."}"""
+Return ONLY a JSON object in this format:
+{
+  "probability": "XX%",
+  "pattern_consistency": "Brief note on texture/writing patterns.",
+  "structural_integrity": "Brief note on layout, continuity, or logic.",
+  "noise_signature": "Brief note on visual noise or text tone.",
+  "metadata_validation": "Brief note on file signatures or stylistic markers.",
+  "explanation": "Clear, objective explanation of the rating."
+}"""
     
     # Use full model path prefix (confirmed working in test_gemini.py)
     # NOTE: response_mime_type="application/json" is NOT used because
@@ -345,7 +357,7 @@ def analyze():
         
         if 'text' in request.form and request.form['text'].strip():
             text_input = request.form['text'].strip()
-            file_hash = hashlib.md5(text_input.encode('utf-8')).hexdigest()
+            file_hash = hashlib.md5(text_input.encode('utf-8') + CACHE_VERSION.encode('utf-8')).hexdigest()
             content_parts.append(text_input)
         # ── New: Browser-side extracted video frames ──────────────
         elif 'video_frames' in request.files:
@@ -362,7 +374,7 @@ def analyze():
                 raw_frames.append((data, f.content_type or 'image/jpeg'))
                 f.seek(0)
 
-            file_hash = hashlib.md5(combined).hexdigest()
+            file_hash = hashlib.md5(combined + CACHE_VERSION.encode('utf-8')).hexdigest()
 
             # Cache check
             if user and file_hash:
@@ -404,7 +416,7 @@ Now analyze the following frames:"""
                 mime_type = file.content_type
                 
                 file_bytes = file.read()
-                file_hash = hashlib.md5(file_bytes).hexdigest()
+                file_hash = hashlib.md5(file_bytes + CACHE_VERSION.encode('utf-8')).hexdigest()
                 file.seek(0)
                 
                 # Check cache before heavy processing
@@ -424,7 +436,7 @@ Now analyze the following frames:"""
                 
                 # Text-based documents (Word, PPT, TXT)
                 if mime_type in ['text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']:
-                    text = extract_text_from_file(file, file.filename)
+                    text = extract_text_from_bytes(file_bytes, file.filename)
                     if not text:
                         return jsonify({"error": "Could not extract text from document."}), 400
                     

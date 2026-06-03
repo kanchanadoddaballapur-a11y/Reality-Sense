@@ -162,6 +162,51 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    async function fetchWithRetry(url, options, maxRetries = 3, delayMs = 4000) {
+        let lastError = null;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const response = await fetch(url, options);
+                
+                // If it's a 502, 503, or 504 from Render's load balancer during spin up
+                if (response.status === 502 || response.status === 503 || response.status === 504) {
+                    throw new Error(`Server is starting up (status ${response.status}).`);
+                }
+                
+                const contentType = response.headers.get('content-type') || '';
+                if (!contentType.includes('application/json')) {
+                    throw new Error('Server returned HTML instead of JSON (possibly gateway error).');
+                }
+                
+                const data = await response.json();
+                if (!response.ok) {
+                    // Standard user/logic error from our own Flask server - do not retry
+                    throw new Error(data.error || `Server error ${response.status}`);
+                }
+                return data;
+            } catch (err) {
+                console.warn(`Attempt ${attempt} failed:`, err);
+                lastError = err;
+                
+                // If it is a logic error from Flask (status 400, etc.), do not retry
+                if (err.message && !err.message.includes('starting up') && !err.message.includes('HTML') && !err.message.includes('Failed to fetch')) {
+                    throw err;
+                }
+                
+                if (attempt < maxRetries) {
+                    const statusMsg = `Server is warming up (Attempt ${attempt}/${maxRetries})...`;
+                    if (btnText) btnText.textContent = statusMsg;
+                    const scannerTextDisplay = document.getElementById('scanner-text-display');
+                    if (scannerTextDisplay) scannerTextDisplay.textContent = statusMsg;
+                    
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                    delayMs += 2000; // Increment backoff
+                }
+            }
+        }
+        throw lastError || new Error('Request failed after max retries.');
+    }
+
     // ─── Form Submission ──────────────────────────────────────
     if (form) {
         form.addEventListener('submit', async (e) => {
@@ -236,9 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 btnText.textContent = 'Sending to AI...';
-                const response = await fetch('/analyze', { method: 'POST', body: formData });
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.error || 'An error occurred during analysis.');
+                const data = await fetchWithRetry('/analyze', { method: 'POST', body: formData });
                 displayResult(data);
             } catch (err) {
                 showError(err.message);
