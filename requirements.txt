@@ -10,4 +10,5 @@ requests_oauthlib==2.0.0
 beautifulsoup4==4.12.3
 pillow==10.3.0
 Flask-SQLAlchemy==3.1.1
-gunicorn==22.0.0
+gunicorn==22.0.0python-pptx==0.6.23
+opencv-python-headless==4.9.0.80
