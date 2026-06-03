@@ -143,6 +143,7 @@ Return ONLY a JSON object in this format:
         'models/gemini-2.5-pro',        # Primary pro model
         'models/gemini-1.5-flash',      # Fallback fast model (separate rate limit bucket)
         'models/gemini-1.5-pro',        # Fallback pro model (separate rate limit bucket)
+        'models/gemini-1.5-flash-8b',   # Ultra-fast fallback model
     ]
     
     client = genai.Client(api_key=GEMINI_API_KEY)
