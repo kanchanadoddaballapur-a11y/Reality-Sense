@@ -144,6 +144,7 @@ Return ONLY a JSON object in this format:
     ]
     
     client = genai.Client(api_key=GEMINI_API_KEY)
+    errors = []
 
     for model_name in models_to_try:
         try:
@@ -204,10 +205,12 @@ Return ONLY a JSON object in this format:
             print(f"DEBUG: Analysis succeeded with model {model_name}")
             return result
         except Exception as e:
-            print(f"DEBUG ERROR: Model {model_name} failed: {str(e)}")
+            err_msg = f"{model_name}: {str(e)}"
+            print(f"DEBUG ERROR: {err_msg}")
+            errors.append(err_msg)
             continue
             
-    return {"error": "AI analysis failed. Please try again with a smaller file or different format."}
+    return {"error": f"AI analysis failed. Details: {'; '.join(errors)}"}
 
 def login_required(f):
     @wraps(f)
