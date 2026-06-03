@@ -113,6 +113,12 @@ def analyze_multimodal(content_parts):
     system_prompt = """
     You are an expert forensic AI Detection system. Your job is to analyze the provided content and determine with high confidence whether it was created or significantly assisted by AI tools.
 
+    CRITICAL CALIBRATION RULES:
+    - For VIDEOS: Be AGGRESSIVE. Stock footage assembly across unrelated scenes is a near-certain AI signature. Default to HIGH probability unless the video clearly shows a continuous, unedited real-world recording.
+    - For PRESENTATIONS (PPT): Be LENIENT. Bullet points and short slide text are NORMAL for humans. Only flag as AI if the text reads like ChatGPT output (generic, padded, impersonal).
+    - For IMAGES: Be PRECISE. Real photos have natural imperfections. Flag only clear AI artifacts.
+    - For TEXT/DOCUMENTS: Look for the absence of personal voice, specific details, and natural writing variation.
+
     STEP 1 — WATERMARK SCAN (HIGHEST PRIORITY):
     Scan ALL corners and edges of every frame for ANY watermarks, logos, or text from AI tools including:
     InVideo, Instudio, Runway, Pika, Sora, HeyGen, D-ID, Synthesia, Pictory, Steve.ai, Lumen5, Fliki, Canva AI, CapCut AI, Adobe Firefly, DALL-E, Midjourney.
@@ -453,8 +459,28 @@ Now analyze the following frames:"""
                 # Text-based documents (Word, PPT, TXT)
                 if mime_type in ['text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']:
                     text = extract_text_from_file(file, file.filename)
-                    if text: content_parts.append(text)
-                    else: return jsonify({"error": "Could not extract text from document."}), 400
+                    if not text:
+                        return jsonify({"error": "Could not extract text from document."}), 400
+                    
+                    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'txt'
+                    if ext == 'pptx':
+                        doc_context = f"""IMPORTANT CONTEXT: The following is text extracted from a PowerPoint presentation file named '{file.filename}'.
+
+CRITICAL NOTE FOR PPT ANALYSIS:
+- Slide text is NATURALLY short, bullet-pointed, and structured. This is NOT evidence of AI generation.
+- Headings, sub-headings, and brief bullet points are how ALL humans write slides.
+- Only flag as AI if you detect: unnatural perfect prose on slides, clearly ChatGPT-style explanations pasted into slides, or generic filler content with no personal specifics.
+- Personal names, project titles, specific dates, or personal anecdotes are STRONG indicators of human authorship.
+- A low AI probability (under 30%) is appropriate for most human-made presentations.
+
+Presentation text follows:\n"""
+                        content_parts.append(doc_context + text)
+                    elif ext == 'docx':
+                        doc_context = f"""IMPORTANT CONTEXT: The following is text extracted from a Word document named '{file.filename}'.
+Analyze the writing style carefully. Look for lack of personal voice, overly generic explanations, repetitive structure, and absence of specific real-world details as AI signals.\n"""
+                        content_parts.append(doc_context + text)
+                    else:
+                        content_parts.append(text)
                 
                 # Images, Videos, & PDFs (Multimodal)
                 elif mime_type.startswith('image/') or mime_type.startswith('video/') or mime_type == 'application/pdf':
