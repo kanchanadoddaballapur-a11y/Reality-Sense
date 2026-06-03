@@ -44,7 +44,6 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             fileDropZone.classList.remove('drag-over');
             if (e.dataTransfer.files.length > 0) {
-                // Assign dropped file to input
                 const dt = new DataTransfer();
                 dt.items.add(e.dataTransfer.files[0]);
                 fileInput.files = dt.files;
@@ -86,18 +85,97 @@ document.addEventListener('DOMContentLoaded', () => {
         if (imgThumb) imgThumb.src = '';
     }
 
+    // ─── Client-Side Video Frame Extractor ───────────────────
+    // Instead of uploading the full video to the slow Render server,
+    // we snap 8 keyframes directly in the browser and send only those.
+    function extractVideoFrames(file, numFrames = 8) {
+        return new Promise((resolve, reject) => {
+            const video = document.createElement('video');
+            video.preload = 'auto';
+            video.muted = true;
+            video.playsInline = true;
+            const url = URL.createObjectURL(file);
+            video.src = url;
+
+            video.addEventListener('error', () => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Could not load video for frame extraction.'));
+            });
+
+            video.addEventListener('loadedmetadata', async () => {
+                const duration = video.duration;
+                if (!duration || duration === Infinity) {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('Cannot determine video duration.'));
+                    return;
+                }
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const MAX_DIM = 720;
+                const frames = [];
+
+                // Seek to each timestamp and capture a frame
+                for (let i = 0; i < numFrames; i++) {
+                    // Evenly space frames across the video, avoiding the very first/last frame
+                    const t = (duration / (numFrames + 1)) * (i + 1);
+                    await seekAndCapture(video, canvas, ctx, MAX_DIM, t)
+                        .then(blob => frames.push(blob))
+                        .catch(() => {}); // skip a bad frame silently
+                }
+
+                URL.revokeObjectURL(url);
+                resolve(frames);
+            });
+
+            video.load();
+        });
+    }
+
+    function seekAndCapture(video, canvas, ctx, maxDim, time) {
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('seek timeout')), 5000);
+            
+            video.currentTime = time;
+            video.addEventListener('seeked', function handler() {
+                video.removeEventListener('seeked', handler);
+                clearTimeout(timeout);
+                try {
+                    let w = video.videoWidth;
+                    let h = video.videoHeight;
+                    if (w > maxDim || h > maxDim) {
+                        const scale = maxDim / Math.max(w, h);
+                        w = Math.round(w * scale);
+                        h = Math.round(h * scale);
+                    }
+                    canvas.width = w;
+                    canvas.height = h;
+                    ctx.drawImage(video, 0, 0, w, h);
+                    canvas.toBlob((blob) => {
+                        if (blob) resolve(blob);
+                        else reject(new Error('canvas toBlob failed'));
+                    }, 'image/jpeg', 0.82);
+                } catch (err) {
+                    reject(err);
+                }
+            }, { once: true });
+        });
+    }
+
     // ─── Form Submission ──────────────────────────────────────
     if (form) {
         form.addEventListener('submit', async (e) => {
-            console.log('Form submission started');
             e.preventDefault();
 
             hideResult();
             errorMessage.classList.add('hidden');
 
-            const hasFile  = fileInput.files.length > 0;
-
+            const hasFile = fileInput.files.length > 0;
             if (!hasFile) { showError('Please select a file to analyze.'); return; }
+
+            const selectedFile = fileInput.files[0];
+            const isVideo = selectedFile.type.startsWith('video/');
+            const isImage = selectedFile.type.startsWith('image/');
 
             // Loading state
             submitBtn.disabled = true;
@@ -108,23 +186,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const imageScanner = document.getElementById('image-scanner');
             const scannerTextDisplay = document.getElementById('scanner-text-display');
             
-            const isVideo = hasFile && fileInput.files[0].type.startsWith('video/');
-            const isImage = hasFile && fileInput.files[0].type.startsWith('image/');
-            
             if (isVideo && videoScanner) videoScanner.classList.remove('hidden');
             if (isImage && imageScanner) imageScanner.classList.remove('hidden');
 
-            let msgs = ['Scanning patterns…', 'Verifying authenticity…', 'Analyzing metadata…', 'Generating report…'];
-            if (isVideo) {
-                msgs = [
-                    'Uploading video...', 
-                    'Processing video frames (this may take up to a minute)...', 
-                    'Scanning for temporal AI artifacts...', 
-                    'Verifying physics & consistency...',
-                    'Still analyzing, please be patient...',
-                    'Generating final AI report...'
-                ];
-            }
+            let msgs = isVideo
+                ? ['Extracting video frames...', 'Scanning for deepfake artifacts...', 'Analyzing temporal consistency...', 'Checking motion physics...', 'Generating AI report...']
+                : ['Scanning patterns…', 'Verifying authenticity…', 'Analyzing metadata…', 'Generating report…'];
             
             let msgIdx = 0;
             const msgTimer = setInterval(() => {
@@ -133,10 +200,43 @@ document.addEventListener('DOMContentLoaded', () => {
                     btnText.textContent = nextMsg; 
                     if (isVideo && scannerTextDisplay) scannerTextDisplay.textContent = nextMsg;
                 }
-            }, 4000);
+            }, 3000);
 
             try {
-                const response = await fetch('/analyze', { method: 'POST', body: new FormData(form) });
+                let formData;
+
+                if (isVideo) {
+                    // ── CLIENT-SIDE FRAME EXTRACTION ──
+                    // Snap frames in browser, then send them as images
+                    btnText.textContent = 'Extracting frames in browser...';
+                    if (scannerTextDisplay) scannerTextDisplay.textContent = 'Snapping keyframes locally...';
+                    
+                    let frames;
+                    try {
+                        frames = await extractVideoFrames(selectedFile, 8);
+                    } catch (err) {
+                        // Fallback: send raw video if frame extraction fails
+                        console.warn('Frame extraction failed, falling back to raw upload:', err);
+                        frames = null;
+                    }
+
+                    if (frames && frames.length > 0) {
+                        formData = new FormData();
+                        // Append original filename so server knows the source
+                        formData.append('video_filename', selectedFile.name);
+                        frames.forEach((blob, i) => {
+                            formData.append('video_frames', blob, `frame_${i}.jpg`);
+                        });
+                    } else {
+                        // Fallback to raw upload if extraction totally failed
+                        formData = new FormData(form);
+                    }
+                } else {
+                    formData = new FormData(form);
+                }
+
+                btnText.textContent = 'Sending to AI...';
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'An error occurred during analysis.');
                 displayResult(data);
@@ -162,19 +262,15 @@ document.addEventListener('DOMContentLoaded', () => {
             prob = data.probability;
         }
 
-        // Show result panel
         resultEmpty.classList.add('hidden');
         resultSection.classList.remove('hidden');
 
-        // Animate percentage
         animateValue(probabilityValue, 0, prob, 1100);
 
-        // Update progress ring (circumference for r=42: 2*PI*42 ≈ 264)
         const circ = 264;
         progressCircle.style.strokeDasharray = circ;
         progressCircle.style.strokeDashoffset = circ - (prob / 100) * circ;
 
-        // Color & Verdict
         if (prob < 30) {
             progressCircle.style.stroke = '#10B981';
             verdictBadge.textContent = 'Likely Human';
@@ -190,8 +286,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         explanationText.textContent = data.explanation || 'No explanation provided.';
-        
-        // Populate Advanced Breakdown
         document.getElementById('pattern-text').textContent = data.pattern_consistency || 'Data unavailable.';
         document.getElementById('structure-text').textContent = data.structural_integrity || 'Data unavailable.';
         document.getElementById('noise-text').textContent = data.noise_signature || 'Data unavailable.';

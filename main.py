@@ -343,6 +343,37 @@ def analyze():
             text_input = request.form['text'].strip()
             file_hash = hashlib.md5(text_input.encode('utf-8')).hexdigest()
             content_parts.append(text_input)
+        # ── New: Browser-side extracted video frames ──────────────
+        elif 'video_frames' in request.files:
+            frame_files = request.files.getlist('video_frames')
+            video_name = request.form.get('video_filename', 'video')
+            source_name = video_name
+
+            # Hash all frames combined for caching
+            combined = b''
+            raw_frames = []
+            for f in frame_files:
+                data = f.read()
+                combined += data
+                raw_frames.append((data, f.content_type or 'image/jpeg'))
+                f.seek(0)
+
+            file_hash = hashlib.md5(combined).hexdigest()
+
+            # Cache check
+            if user and file_hash:
+                cached = Analysis.query.filter_by(user_id=user.id, file_hash=file_hash).first()
+                if cached:
+                    print(f"Returning cached video analysis for {file_hash}")
+                    return jsonify(json.loads(cached.explanation))
+
+            # Build content parts from the extracted frames
+            for frame_data, mime in raw_frames:
+                content_parts.append({
+                    'mime_type': 'image/jpeg',
+                    'data': base64.b64encode(frame_data).decode('utf-8')
+                })
+
         elif 'file' in request.files:
             file = request.files['file']
             if file.filename != '':
