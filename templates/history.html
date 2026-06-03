@@ -10,8 +10,7 @@
             <p class="dashboard-subtitle">Review your past AI detection results.</p>
         </div>
         {% if history %}
-        <form action="{{ url_for('clear_history') }}" method="POST"
-              onsubmit="return confirm('Are you sure you want to clear all history? This cannot be undone.')">
+        <form action="{{ url_for('clear_history') }}" method="POST">
             <button type="submit" class="clear-history-btn">🗑️ Clear All History</button>
         </form>
         {% endif %}
