@@ -205,7 +205,7 @@ Return ONLY a JSON object in this exact format:
             
             if image_parts:
                 # Use Groq's active vision model
-                model_name = "meta-llama/llama-4-scout-17b-16e-instruct"
+                model_name = "llama-3.2-11b-vision-preview"
                 content_payload = []
                 if combined_text:
                     content_payload.append({"type": "text", "text": f"Please analyze this content:\n\n{combined_text}"})
