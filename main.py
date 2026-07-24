@@ -350,21 +350,25 @@ Return ONLY a JSON object in this exact format:
             gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
             lap_var = cv2.Laplacian(gray, cv2.CV_64F).var()
             
-            print(f"DEBUG Local Analysis: Laplacian Variance = {lap_var}, Camera EXIF = {has_camera_metadata}")
+            # Analyze Structural Entropy
+            entropy = img.convert('L').entropy()
+            
+            print(f"DEBUG Local Analysis: Laplacian = {lap_var}, Entropy = {entropy}, Camera EXIF = {has_camera_metadata}")
             
             # Heuristic Logic
             if not has_camera_metadata:
-                # AI images often lack EXIF and have unnatural variance (hyper-smooth or hyper-detailed)
-                if lap_var < 80 or lap_var > 2000:
+                # AI images often lack EXIF and have unnatural variance or abnormal entropy
+                # Real photos typically have entropy between 7.0 and 7.5, and variance between 150 and 800.
+                if lap_var < 150 or lap_var > 800 or entropy < 7.0 or entropy > 7.6:
                     is_ai = True
-                    pattern_note = f"Unnatural edge variance detected (Laplacian: {lap_var:.1f}). Lacks organic camera sensor EXIF data."
-                    noise_note = "Hyper-smoothed localized textures typical of diffusion denoising."
+                    pattern_note = f"Unnatural textural entropy detected (Entropy: {entropy:.2f}). Lacks organic camera EXIF data."
+                    noise_note = f"Mathematical edge variance falls outside standard physical limits (Laplacian: {lap_var:.1f})."
                 else:
-                    pattern_note = f"Edge variance falls within normal limits (Laplacian: {lap_var:.1f}). No native camera metadata found."
-                    noise_note = "Standard noise distribution detected."
+                    pattern_note = f"Structural entropy falls within organic limits (Entropy: {entropy:.2f}). No native camera metadata found."
+                    noise_note = f"Standard physical noise distribution detected (Laplacian: {lap_var:.1f})."
             else:
-                pattern_note = f"Native camera sensor metadata verified. Organic edge variance (Laplacian: {lap_var:.1f})."
-                noise_note = "Authentic hardware sensor noise signature."
+                pattern_note = f"Native camera sensor metadata verified. Organic structural entropy (Entropy: {entropy:.2f})."
+                noise_note = f"Authentic hardware sensor noise signature (Laplacian: {lap_var:.1f})."
                 
         except Exception as e:
             print(f"DEBUG Local Analysis Failed: {e}")
