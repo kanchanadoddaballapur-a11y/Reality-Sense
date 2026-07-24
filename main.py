@@ -330,19 +330,26 @@ Return ONLY a JSON object in this exact format:
             from groq import Groq
             client = Groq(api_key=GROQ_API_KEY)
             
-            content_payload = [{"type": "text", "text": "Critically analyze this visual media (either a single image or 3 sequential frames extracted from a video). Look deeply for 'hyper-realistic' artificial lighting, impossibly flawless skin (no pores/blemishes), physics-defying temporal inconsistencies, or bokeh/blur that defies physical camera lenses. These are massive indicators of AI generation (Midjourney/Sora). If you detect these synthetic signatures, bias strongly towards a HIGH AI probability."}]
-            valid_images = 0
+            valid_images = []
             for img in image_parts[:3]:
                 if isinstance(img, dict) and 'data' in img:
+                    valid_images.append(img)
+            
+            if len(valid_images) > 0:
+                if len(valid_images) == 1:
+                    prompt_text = "This is a single image. Analyze it critically for 'hyper-realistic' artificial lighting, impossibly flawless skin (no pores/blemishes), or impossible physics. If you see these signs of AI generation, bias strongly towards a HIGH AI probability."
+                else:
+                    prompt_text = f"These are {len(valid_images)} sequential frames extracted from a video. Analyze them for temporal inconsistencies, morphing textures, or flickering lighting across the frames. If the frames show inconsistent structures, it is an AI generated video. Bias strongly towards HIGH AI probability if you see morphing."
+                
+                content_payload = [{"type": "text", "text": prompt_text}]
+                for img in valid_images:
                     content_payload.append({
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:{img.get('mime_type', 'image/jpeg')};base64,{img.get('data', '')}"
                         }
                     })
-                    valid_images += 1
-            
-            if valid_images > 0:
+                    
                 messages = [
                     {"role": "system", "content": system_prompt.strip()},
                     {"role": "user", "content": content_payload}
