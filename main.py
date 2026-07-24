@@ -556,7 +556,7 @@ Now analyze the following frames:"""
                 if mime_type in ['text/plain', 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']:
                     text = extract_text_from_bytes(file_bytes, file.filename)
                     if not text:
-                        return jsonify({"error": "Could not extract text from document."}), 400
+                        return jsonify({"error": "No embedded text found. If this is a scanned image converted to PDF, please upload the original Image (.jpg/.png) directly, as OCR is required for scanned PDFs."}), 400
                     
                     # Truncate to stay within input token limits (~12,000 chars ≈ 3,000 tokens)
                     MAX_CHARS = 12000
