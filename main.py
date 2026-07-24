@@ -313,58 +313,49 @@ Output format:
             "explanation": "Deep forensic binary analysis bypassed the neural network and directly discovered the AI generator's hidden signature embedded inside the raw file bytes."
         }
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    import google.generativeai as genai_legacy
+    genai_legacy.configure(api_key=GEMINI_API_KEY)
     errors = []
+
+    models_to_try = [
+        'gemini-1.5-pro',
+        'gemini-1.5-flash',
+        'gemini-2.0-flash-exp'
+    ]
 
     for model_name in models_to_try:
         try:
-            # Build typed content parts for the new SDK
-            sdk_parts = []
+            # Build parts for the legacy SDK
+            legacy_parts = []
             for part in content_parts:
                 if isinstance(part, str):
-                    sdk_parts.append(part)
+                    legacy_parts.append(part)
                 elif isinstance(part, dict) and 'data' in part:
                     import base64 as _b64
-                    sdk_parts.append(
-                        genai_types.Part.from_bytes(
-                            data=_b64.b64decode(part['data']),
-                            mime_type=part['mime_type']
-                        )
+                    legacy_parts.append(
+                        {
+                            "mime_type": part['mime_type'],
+                            "data": _b64.b64decode(part['data'])
+                        }
                     )
-                else:
-                    sdk_parts.append(part)
 
-            # Try with system_instruction first, fallback to inline prompt
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=sdk_parts,
-                    config=genai_types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        max_output_tokens=2048,
-                        temperature=0.0,
-                        response_mime_type="application/json"
-                    )
+            model = genai_legacy.GenerativeModel(
+                model_name=model_name,
+                system_instruction=system_prompt,
+                generation_config=genai_legacy.types.GenerationConfig(
+                    temperature=0.0,
+                    response_mime_type="application/json",
                 )
-            except Exception as sys_err:
-                print(f"DEBUG: system_instruction failed for {model_name}: {sys_err}, trying inline prompt")
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[system_prompt] + sdk_parts,
-                    config=genai_types.GenerateContentConfig(
-                        max_output_tokens=2048,
-                        temperature=0.0,
-                        response_mime_type="application/json"
-                    )
-                )
-
+            )
+            
+            response = model.generate_content(legacy_parts)
             raw_text = response.text.strip()
-            print(f"DEBUG Gemini: Model {model_name} response: {raw_text[:200]}")
+            print(f"DEBUG Gemini Legacy: Model {model_name} response: {raw_text[:200]}")
 
             if "```json" in raw_text:
                 raw_text = raw_text.split("```json")[1].split("```")[0].strip()
             elif "```" in raw_text:
-                raw_text = raw_text.split("```")[1].split("```")[0].strip()
+                raw_text = raw_text.split("```")[1].strip()
 
             start_idx = raw_text.find('{')
             end_idx = raw_text.rfind('}')
