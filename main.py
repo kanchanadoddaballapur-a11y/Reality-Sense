@@ -255,6 +255,47 @@ Return ONLY a JSON object in this exact format:
         'gemini-2.5-flash',
     ]
     
+    # ── FORENSIC BINARY METADATA SCAN ──
+    # Deepfake generators often embed metadata or software tags in the raw binary chunks of PNG/JPG/MP4 files.
+    # We extract all ASCII strings from the raw bytes to catch these tags before sending to the Neural Network.
+    forensic_flag = None
+    for part in content_parts:
+        if isinstance(part, dict) and 'data' in part:
+            import base64 as _b64
+            raw_bytes = _b64.b64decode(part['data'])
+            
+            # Fast binary string extraction
+            extracted_text = []
+            curr_str = []
+            for b in raw_bytes:
+                if 32 <= b <= 126:  # Printable ASCII
+                    curr_str.append(chr(b))
+                else:
+                    if len(curr_str) >= 4:
+                        extracted_text.append("".join(curr_str))
+                    curr_str = []
+                    
+            full_binary_text = " ".join(extracted_text).lower()
+            
+            ai_signatures = ['midjourney', 'sora', 'runwayml', 'luma', 'kling', 'comfyui', 'stable diffusion', 'dall-e', 'sdxl', 'flux']
+            for sig in ai_signatures:
+                if sig in full_binary_text:
+                    forensic_flag = sig
+                    break
+        if forensic_flag:
+            break
+            
+    if forensic_flag:
+        print(f"DEBUG: Forensic scanner caught AI signature: {forensic_flag}")
+        return {
+            "probability": "99%",
+            "pattern_consistency": f"Forensic string extraction detected hidden software signature: '{forensic_flag}'.",
+            "structural_integrity": "Cryptographic or software tags embedded within the file structure.",
+            "noise_signature": "Synthetically compiled media container.",
+            "metadata_validation": f"Definitive proof of generative origin found in binary chunk headers ({forensic_flag}).",
+            "explanation": "Deep forensic binary analysis bypassed the neural network and directly discovered the AI generator's hidden signature embedded inside the raw file bytes."
+        }
+
     client = genai.Client(api_key=GEMINI_API_KEY)
     errors = []
 
