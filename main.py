@@ -353,16 +353,20 @@ Return ONLY a JSON object in this exact format:
             # Analyze Structural Entropy
             entropy = img.convert('L').entropy()
             
-            print(f"DEBUG Local Analysis: Laplacian = {lap_var}, Entropy = {entropy}, Camera EXIF = {has_camera_metadata}")
+            # Analyze Color Saturation (AI tends to be hyper-vibrant or mathematically uniform)
+            hsv = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2HSV)
+            std_sat = hsv[:, :, 1].std()
+            
+            print(f"DEBUG Local Analysis: Laplacian={lap_var}, Entropy={entropy}, SatStd={std_sat}, EXIF={has_camera_metadata}")
             
             # Heuristic Logic
             if not has_camera_metadata:
-                # AI images often lack EXIF and have unnatural variance or abnormal entropy
-                # Real photos typically have entropy between 7.0 and 7.5, and variance between 150 and 800.
-                if lap_var < 150 or lap_var > 800 or entropy < 7.0 or entropy > 7.6:
+                # Without physical camera EXIF, the image must perfectly match a biological noise profile to be deemed human.
+                # AI generations almost always fail at least one of these tight constraints.
+                if lap_var < 200 or lap_var > 600 or entropy < 7.2 or entropy > 7.5 or std_sat > 55 or std_sat < 15:
                     is_ai = True
-                    pattern_note = f"Unnatural textural entropy detected (Entropy: {entropy:.2f}). Lacks organic camera EXIF data."
-                    noise_note = f"Mathematical edge variance falls outside standard physical limits (Laplacian: {lap_var:.1f})."
+                    pattern_note = f"Mathematical anomalies detected. (Entropy: {entropy:.2f}, Saturation StdDev: {std_sat:.1f}). Lacks organic camera EXIF."
+                    noise_note = f"Edge variance falls outside strict physical limits (Laplacian: {lap_var:.1f})."
                 else:
                     pattern_note = f"Structural entropy falls within organic limits (Entropy: {entropy:.2f}). No native camera metadata found."
                     noise_note = f"Standard physical noise distribution detected (Laplacian: {lap_var:.1f})."
