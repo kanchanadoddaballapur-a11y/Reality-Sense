@@ -562,19 +562,18 @@ Now analyze the following frames:"""
                                 "mime_type": "application/pdf",
                                 "data": base64.b64encode(file_bytes).decode('utf-8')
                             })
-                            continue
                         else:
                             return jsonify({"error": "No embedded text found. Please upload the original Image (.jpg/.png) directly."}), 400
+                    else:
+                        # Truncate to stay within input token limits (~12,000 chars ≈ 3,000 tokens)
+                        MAX_CHARS = 12000
+                        was_truncated = len(text) > MAX_CHARS
+                        if was_truncated:
+                            text = text[:MAX_CHARS] + "\n\n[NOTE: Document was truncated to fit analysis limits. The above is a representative sample.]"
                     
-                    # Truncate to stay within input token limits (~12,000 chars ≈ 3,000 tokens)
-                    MAX_CHARS = 12000
-                    was_truncated = len(text) > MAX_CHARS
-                    if was_truncated:
-                        text = text[:MAX_CHARS] + "\n\n[NOTE: Document was truncated to fit analysis limits. The above is a representative sample.]"
-                    
-                    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'txt'
-                    if ext == 'pptx':
-                        doc_context = f"""IMPORTANT CONTEXT: The following is text extracted from a PowerPoint presentation file named '{file.filename}'.
+                        ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'txt'
+                        if ext == 'pptx':
+                            doc_context = f"""IMPORTANT CONTEXT: The following is text extracted from a PowerPoint presentation file named '{file.filename}'.
 
 CRITICAL NOTE FOR PPT ANALYSIS:
 - Slide text is NATURALLY short, bullet-pointed, and structured. This is NOT evidence of AI generation.
@@ -584,13 +583,13 @@ CRITICAL NOTE FOR PPT ANALYSIS:
 - A low AI probability (under 30%) is appropriate for most human-made presentations.
 
 Presentation text follows:\n"""
-                        content_parts.append(doc_context + text)
-                    elif ext in ['docx', 'pdf']:
-                        doc_context = f"""IMPORTANT CONTEXT: The following is text extracted from a {ext.upper()} document named '{file.filename}'.
+                            content_parts.append(doc_context + text)
+                        elif ext in ['docx', 'pdf']:
+                            doc_context = f"""IMPORTANT CONTEXT: The following is text extracted from a {ext.upper()} document named '{file.filename}'.
 Analyze the writing style carefully. Look for lack of personal voice, overly generic explanations, repetitive structure, and absence of specific real-world details as AI signals.\n"""
-                        content_parts.append(doc_context + text)
-                    else:
-                        content_parts.append(text)
+                            content_parts.append(doc_context + text)
+                        else:
+                            content_parts.append(text)
                 
                 # Images & Videos (Multimodal)
                 elif mime_type.startswith('image/') or mime_type.startswith('video/'):
