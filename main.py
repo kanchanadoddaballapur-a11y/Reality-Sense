@@ -12,8 +12,7 @@ from dotenv import load_dotenv
 from functools import wraps
 from datetime import datetime, timedelta
 from authlib.integrations.flask_client import OAuth
-from google import genai
-from google.genai import types as genai_types
+import google.generativeai as genai_legacy
 import base64
 import hashlib
 
@@ -234,86 +233,47 @@ Return ONLY a JSON object in this exact format:
     if not GEMINI_API_KEY:
         return {"error": "API key not found. Please set GROQ_API_KEY or GEMINI_API_KEY in Render settings."}
     
-    models_to_try = [
-        'gemini-2.5-flash',
-        'gemini-2.0-flash-lite',
-        'gemini-1.5-flash-8b',
-        'gemini-1.5-flash-002',
-        'gemini-1.5-flash-001',
-        'gemini-1.5-pro-002',
-        'gemini-2.0-pro-exp-02-05',
-        'gemini-2.0-flash',
-        'gemini-2.0-flash-exp'
-    ]
-    
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    genai_legacy.configure(api_key=GEMINI_API_KEY)
     errors = []
 
-    for model_name in models_to_try:
-        try:
-            # Build typed content parts for the new SDK
-            sdk_parts = []
-            for part in content_parts:
-                if isinstance(part, str):
-                    sdk_parts.append(part)
-                elif isinstance(part, dict) and 'data' in part:
-                    import base64 as _b64
-                    sdk_parts.append(
-                        genai_types.Part.from_bytes(
-                            data=_b64.b64decode(part['data']),
-                            mime_type=part['mime_type']
-                        )
-                    )
-                else:
-                    sdk_parts.append(part)
+    try:
+        # Build payload for legacy SDK
+        sdk_parts = []
+        for part in content_parts:
+            if isinstance(part, str):
+                sdk_parts.append(part)
+            elif isinstance(part, dict) and 'data' in part:
+                import base64 as _b64
+                sdk_parts.append({
+                    "mime_type": part['mime_type'],
+                    "data": _b64.b64decode(part['data'])
+                })
+            else:
+                sdk_parts.append(part)
 
-            # Try with system_instruction first, fallback to inline prompt
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=sdk_parts,
-                    config=genai_types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        max_output_tokens=2048,
-                        temperature=0.0,
-                        response_mime_type="application/json"
-                    )
-                )
-            except Exception as sys_err:
-                print(f"DEBUG: system_instruction failed for {model_name}: {sys_err}, trying inline prompt")
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[system_prompt] + sdk_parts,
-                    config=genai_types.GenerateContentConfig(
-                        max_output_tokens=2048,
-                        temperature=0.0,
-                        response_mime_type="application/json"
-                    )
-                )
+        model = genai_legacy.GenerativeModel(
+            model_name='gemini-1.5-flash',
+            system_instruction=system_prompt,
+            generation_config=genai_legacy.types.GenerationConfig(
+                temperature=0.0,
+                max_output_tokens=2048,
+                response_mime_type="application/json"
+            )
+        )
+        
+        response = model.generate_content(sdk_parts)
+        raw_text = response.text.strip()
+        print(f"DEBUG Gemini Legacy: Analysis succeeded: {raw_text[:200]}")
 
-            raw_text = response.text.strip()
-            print(f"DEBUG Gemini: Model {model_name} response: {raw_text[:200]}")
-
-            if "```json" in raw_text:
-                raw_text = raw_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in raw_text:
-                raw_text = raw_text.split("```")[1].split("```")[0].strip()
-
-            start_idx = raw_text.find('{')
-            end_idx = raw_text.rfind('}')
-            if start_idx != -1 and end_idx != -1:
-                raw_text = raw_text[start_idx:end_idx+1]
-
-            result = parse_loose_json(raw_text)
-            print(f"DEBUG Gemini: Analysis succeeded with model {model_name}")
-            return result
-        except Exception as e:
-            err_msg = f"{model_name}: {str(e)}"
-            print(f"DEBUG ERROR: {err_msg}")
-            errors.append(err_msg)
-            continue
+        result = parse_loose_json(raw_text)
+        return result
+        
+    except Exception as e:
+        err_msg = f"Gemini 1.5 Flash Error: {str(e)}"
+        print(f"DEBUG ERROR: {err_msg}")
+        errors.append(err_msg)
             
-    # If Gemini completely fails, return the actual error so it can be debugged, no more faking it.
+    # If Gemini completely fails, return the actual error
     return {"error": f"AI Processing Failed. Please check quotas or API keys. Errors: {'; '.join(errors)}"}
 
 def login_required(f):
