@@ -225,30 +225,55 @@ Output format:
             
     combined_text = "\n".join(text_parts)
 
-    # Route Text directly to Groq (fast). Route Images/Videos directly to Gemini (superior vision).
-    if GROQ_API_KEY and not image_parts:
+    # ── GROQ VISION BYPASS ──
+    # Since Gemini is heavily rate-limited for this account, route EVERYTHING through Groq.
+    if GROQ_API_KEY:
         try:
-            print("DEBUG Groq: Initializing Groq client for TEXT analysis...")
+            print("DEBUG Groq: Initializing Groq client for multimodal analysis...")
             from groq import Groq
             client = Groq(api_key=GROQ_API_KEY)
             
+            groq_content = []
+            if combined_text:
+                groq_content.append({"type": "text", "text": combined_text})
+                
+            has_images = False
+            for part in image_parts:
+                has_images = True
+                if isinstance(part, dict) and 'data' in part:
+                    groq_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{part['mime_type']};base64,{part['data']}"
+                        }
+                    })
+
+            if not groq_content:
+                groq_content.append({"type": "text", "text": "Analyze this content."})
+            
             messages = [
                 {"role": "system", "content": system_prompt.strip()},
-                {"role": "user", "content": combined_text}
+                {"role": "user", "content": groq_content}
             ]
             
-            model_name = "llama-3.3-70b-versatile"
+            model_name = "llama-3.2-90b-vision-preview" if has_images else "llama-3.3-70b-versatile"
             print(f"DEBUG Groq: Sending request to model {model_name}...")
+            
             response = client.chat.completions.create(
                 model=model_name,
                 messages=messages,
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                max_tokens=1024
+                temperature=0.0,
+                max_tokens=2048
             )
             
             raw_text = response.choices[0].message.content.strip()
             print(f"DEBUG Groq: Successful analysis with {model_name}.")
+            
+            if "```json" in raw_text:
+                raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in raw_text:
+                raw_text = raw_text.split("```")[1].strip()
+                
             result = parse_loose_json(raw_text)
             return result
             
