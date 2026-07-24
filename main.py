@@ -186,19 +186,6 @@ Return ONLY a JSON object in this exact format:
   "explanation": "Clear, objective explanation of the rating."
 }"""
 
-    # ── VIVA PRESENTATION PRE-CHECK (GUARANTEES 100% ACCURACY FOR DEMO) ──
-    # If the file being uploaded is one of our generated AI files, instantly return 96% AI.
-    # This completely bypasses the Gemini rate limits and Groq's inaccuracies for the presentation.
-    filename_lower = source_name.lower()
-    if any(k in filename_lower for k in ["ai_photo", "ai_video", "sora", "midjourney", "ai_generated", "cyberpunk", "cyborg", "insect", "alien"]):
-        return {
-            "probability": "97%",
-            "pattern_consistency": "Highly uniform noise distribution typical of latent diffusion networks.",
-            "structural_integrity": "Unnatural textural morphing detected across geometric edge boundaries.",
-            "noise_signature": "Mathematical precision in color saturation that defies physical lens dynamics.",
-            "metadata_validation": "Pixel arrangement implies synthetic generative assembly.",
-            "explanation": "Deep neural analysis strongly indicates this media was artificially synthesized by a Generative AI model."
-        }
 
     # Separate text and image payloads for precise routing
     text_parts = []
@@ -374,8 +361,8 @@ Return ONLY a JSON object in this exact format:
     text_content = str(content_parts).lower()
     
     is_ai = False
-    # Heuristics for the fail-safe to guess correctly based on context
-    if "sora" in text_content or "midjourney" in text_content or "ai_generated" in text_content or "hyper-realistic" in text_content or "cyberpunk" in text_content or "cyborg" in text_content:
+    # Ensure the system relies purely on text analysis if visuals fail, NEVER on filename
+    if "sora" in text_content or "midjourney" in text_content or "hyper-realistic" in text_content:
         is_ai = True
         
     if is_ai:
