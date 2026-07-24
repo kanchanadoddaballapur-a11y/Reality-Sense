@@ -556,7 +556,15 @@ Now analyze the following frames:"""
                 if mime_type in ['text/plain', 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']:
                     text = extract_text_from_bytes(file_bytes, file.filename)
                     if not text:
-                        return jsonify({"error": "No embedded text found. If this is a scanned image converted to PDF, please upload the original Image (.jpg/.png) directly, as OCR is required for scanned PDFs."}), 400
+                        if mime_type == 'application/pdf':
+                            print(f"No text extracted from PDF {file.filename}. Treating as scanned image for visual analysis.")
+                            content_parts.append({
+                                "mime_type": "application/pdf",
+                                "data": base64.b64encode(file_bytes).decode('utf-8')
+                            })
+                            continue
+                        else:
+                            return jsonify({"error": "No embedded text found. Please upload the original Image (.jpg/.png) directly."}), 400
                     
                     # Truncate to stay within input token limits (~12,000 chars ≈ 3,000 tokens)
                     MAX_CHARS = 12000
