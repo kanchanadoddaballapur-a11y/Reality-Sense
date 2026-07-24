@@ -74,6 +74,7 @@ google = oauth.register(
     client_kwargs={'scope': 'openid email profile'}
 )
 
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Admin123")
@@ -229,98 +230,83 @@ Return ONLY a JSON object in this exact format:
         except Exception as e:
             print(f"DEBUG ERROR Groq failed: {str(e)}. Attempting Gemini fallback...")
 
-    if not GROQ_API_KEY:
-        return {"error": "API key not found. Please set GROQ_API_KEY in Render settings."}
-        
-    try:
-        from groq import Groq
-        client = Groq(api_key=GROQ_API_KEY)
-    except Exception as e:
-        return {"error": f"Failed to initialize Groq client: {str(e)}"}
-        
+    # Gemini Fallback if Groq is not set or failed
+    if not GEMINI_API_KEY:
+        return {"error": "API key not found. Please set GROQ_API_KEY or GEMINI_API_KEY in Render settings."}
+    
+    models_to_try = [
+        'gemini-2.5-flash',
+    ]
+    
+    client = genai.Client(api_key=GEMINI_API_KEY)
     errors = []
-    if image_parts:
-        print("DEBUG: Routing visual analysis to Groq Vision...")
-        valid_images = []
-        for img in image_parts[:3]:
-            if isinstance(img, dict) and 'data' in img:
-                valid_images.append(img)
-                
-        if len(valid_images) > 0:
-            if len(valid_images) == 1:
-                prompt_text = "This is a single image. Analyze it critically for 'hyper-realistic' artificial lighting, impossibly flawless skin (no pores/blemishes), or impossible physics. If you see these signs of AI generation, bias strongly towards a HIGH AI probability."
-            else:
-                prompt_text = f"These are {len(valid_images)} sequential frames extracted from a video. Analyze them for temporal inconsistencies, morphing textures, or flickering lighting across the frames. If the frames show inconsistent structures, it is an AI generated video. Bias strongly towards HIGH AI probability if you see morphing."
-            
-            prompt_text = system_prompt.strip() + "\n\n" + prompt_text
-            
-            if combined_text.strip():
-                prompt_text += f"\n\nContext text from document:\n{combined_text[:1000]}"
-                
-            content_payload = [{"type": "text", "text": prompt_text}]
-            for img in valid_images:
-                content_payload.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{img.get('mime_type', 'image/jpeg')};base64,{img.get('data', '')}"
-                    }
-                })
-                
-            messages = [
-                {"role": "user", "content": content_payload}
-            ]
-            
-            groq_vision_models = [
-                "llama-3.2-90b-vision-instruct",
-                "llama-3.2-11b-vision-instruct",
-                "llama-3.2-90b-vision",
-                "llama-3.2-11b-vision",
-                "llama-3.2-90b-vision-preview",
-                "llama-3.2-11b-vision-preview"
-            ]
-            
-            for model_name in groq_vision_models:
-                try:
-                    response = client.chat.completions.create(
-                        model=model_name,
-                        messages=messages,
-                        temperature=0.1,
-                        max_tokens=1024
-                    )
-                    raw_text = response.choices[0].message.content.strip()
-                    print(f"DEBUG Groq Vision analysis succeeded with model: {model_name}")
-                    return parse_loose_json(raw_text)
-                except Exception as e:
-                    err_msg = f"{model_name}: {str(e)}"
-                    print(f"DEBUG ERROR Groq Vision: {err_msg}")
-                    errors.append(err_msg)
-                    continue
-                    
-            return {"error": f"Groq Vision API Failed. All models exhausted. Errors: {'; '.join(errors)}"}
-        else:
-            return {"error": "Failed to extract valid image data for analysis."}
-    else:
-        # Text-only Groq analysis
-        print("DEBUG Groq: Routing TEXT analysis...")
-        messages = [
-            {"role": "system", "content": system_prompt.strip()},
-            {"role": "user", "content": combined_text}
-        ]
-        
+
+    for model_name in models_to_try:
         try:
-            model_name = "llama-3.3-70b-versatile"
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                max_tokens=1024
-            )
-            raw_text = response.choices[0].message.content.strip()
-            print(f"DEBUG Groq: Successful analysis with {model_name}.")
-            return parse_loose_json(raw_text)
+            # Build typed content parts for the new SDK
+            sdk_parts = []
+            for part in content_parts:
+                if isinstance(part, str):
+                    sdk_parts.append(part)
+                elif isinstance(part, dict) and 'data' in part:
+                    import base64 as _b64
+                    sdk_parts.append(
+                        genai_types.Part.from_bytes(
+                            data=_b64.b64decode(part['data']),
+                            mime_type=part['mime_type']
+                        )
+                    )
+                else:
+                    sdk_parts.append(part)
+
+            # Try with system_instruction first, fallback to inline prompt
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=sdk_parts,
+                    config=genai_types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        max_output_tokens=2048,
+                        temperature=0.0,
+                        response_mime_type="application/json"
+                    )
+                )
+            except Exception as sys_err:
+                print(f"DEBUG: system_instruction failed for {model_name}: {sys_err}, trying inline prompt")
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[system_prompt] + sdk_parts,
+                    config=genai_types.GenerateContentConfig(
+                        max_output_tokens=2048,
+                        temperature=0.0,
+                        response_mime_type="application/json"
+                    )
+                )
+
+            raw_text = response.text.strip()
+            print(f"DEBUG Gemini: Model {model_name} response: {raw_text[:200]}")
+
+            if "```json" in raw_text:
+                raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in raw_text:
+                raw_text = raw_text.split("```")[1].split("```")[0].strip()
+
+            start_idx = raw_text.find('{')
+            end_idx = raw_text.rfind('}')
+            if start_idx != -1 and end_idx != -1:
+                raw_text = raw_text[start_idx:end_idx+1]
+
+            result = parse_loose_json(raw_text)
+            print(f"DEBUG Gemini: Analysis succeeded with model {model_name}")
+            return result
         except Exception as e:
-            return {"error": f"Groq Text API Error: {str(e)}"}
+            err_msg = f"{model_name}: {str(e)}"
+            print(f"DEBUG ERROR: {err_msg}")
+            errors.append(err_msg)
+            continue
+            
+    # If Gemini completely fails, return the actual error so it can be debugged, no more faking it.
+    return {"error": f"AI Processing Failed. Please check quotas or API keys. Errors: {'; '.join(errors)}"}
 
 def login_required(f):
     @wraps(f)
