@@ -666,5 +666,26 @@ Analyze the writing style carefully. Look for lack of personal voice, overly gen
         print(f"Internal Server Error in /analyze: {e}")
         return jsonify({"error": f"Internal Server Error: {str(e)}"}), 500
 
+@app.route('/robots.txt')
+def robots_txt():
+    return "User-agent: *\nAllow: /\nSitemap: https://reality-sense-1.onrender.com/sitemap.xml", 200, {'Content-Type': 'text/plain'}
+
+@app.route('/sitemap.xml')
+def sitemap_xml():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://reality-sense-1.onrender.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://reality-sense-1.onrender.com/signup</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>"""
+    return xml, 200, {'Content-Type': 'application/xml'}
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=True)
