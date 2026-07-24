@@ -332,6 +332,15 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         if 'user' not in session:
             return redirect(url_for('login'))
+        
+        # Self-Healing Database: Recreate user if Render wiped the SQLite DB
+        user = User.query.filter_by(email=session['user']['email']).first()
+        if not user:
+            user = User(email=session['user']['email'])
+            user.set_password(os.urandom(16).hex())
+            db.session.add(user)
+            db.session.commit()
+            
         return f(*args, **kwargs)
     return decorated_function
 
