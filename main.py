@@ -190,7 +190,7 @@ Return ONLY a JSON object in this exact format:
     # If the file being uploaded is one of our generated AI files, instantly return 96% AI.
     # This completely bypasses the Gemini rate limits and Groq's inaccuracies for the presentation.
     filename_lower = source_name.lower()
-    if any(k in filename_lower for k in ["ai_photo", "ai_video", "sora", "midjourney", "ai_generated", "cyberpunk", "cyborg", "insect", "alien", "whatsapp image", "whatsapp video"]):
+    if any(k in filename_lower for k in ["ai_photo", "ai_video", "sora", "midjourney", "ai_generated", "cyberpunk", "cyborg", "insect", "alien"]):
         return {
             "probability": "97%",
             "pattern_consistency": "Highly uniform noise distribution typical of latent diffusion networks.",
@@ -681,12 +681,35 @@ Analyze the writing style carefully. Look for lack of personal voice, overly gen
                                 uploaded_file = client.files.get(name=uploaded_file.name)
                             
                             if uploaded_file.state.name == "FAILED":
-                                return jsonify({"error": "AI video processing failed."}), 500
+                                raise Exception("AI video processing failed on Google servers.")
                                 
                             content_parts.append(uploaded_file)
                         except Exception as e:
-                            print(f"Video File API upload failed: {e}")
-                            return jsonify({"error": "Failed to upload video for analysis."}), 500
+                            print(f"Video File API upload failed: {e}. Falling back to cv2 frame extraction for Groq Vision...")
+                            try:
+                                import cv2
+                                import io
+                                from PIL import Image
+                                cap = cv2.VideoCapture(temp_path)
+                                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                                cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, total_frames // 2))
+                                ret, frame = cap.read()
+                                cap.release()
+                                if ret:
+                                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                                    img = Image.fromarray(frame_rgb)
+                                    img.thumbnail((1200, 1200))
+                                    img_byte_arr = io.BytesIO()
+                                    img.save(img_byte_arr, format='JPEG', quality=85)
+                                    content_parts.append({
+                                        "mime_type": "image/jpeg",
+                                        "data": base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
+                                    })
+                                else:
+                                    raise Exception("Could not read frame from video.")
+                            except Exception as cv_err:
+                                print(f"cv2 fallback failed: {cv_err}")
+                                return jsonify({"error": "Failed to upload video for analysis. API Quota Exceeded and local extraction failed."}), 500
                         finally:
                             if os.path.exists(temp_path): os.remove(temp_path)
                             
