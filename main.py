@@ -186,49 +186,32 @@ Return ONLY a JSON object in this exact format:
   "explanation": "Clear, objective explanation of the rating."
 }"""
 
-    if GROQ_API_KEY:
+    # Separate text and image payloads for precise routing
+    text_parts = []
+    image_parts = []
+    for part in content_parts:
+        if isinstance(part, str):
+            text_parts.append(part)
+        elif isinstance(part, dict) and 'data' in part:
+            image_parts.append(part)
+        elif hasattr(part, 'mime_type'):
+            image_parts.append(part)
+            
+    combined_text = "\n".join(text_parts)
+
+    # Route Text directly to Groq (fast). Route Images/Videos directly to Gemini (superior vision).
+    if GROQ_API_KEY and not image_parts:
         try:
-            print("DEBUG Groq: Initializing Groq client...")
+            print("DEBUG Groq: Initializing Groq client for TEXT analysis...")
             from groq import Groq
             client = Groq(api_key=GROQ_API_KEY)
             
-            # Separate text and image payloads
-            text_parts = []
-            image_parts = []
-            for part in content_parts:
-                if isinstance(part, str):
-                    text_parts.append(part)
-                elif isinstance(part, dict) and 'data' in part:
-                    image_parts.append(part)
-            
-            combined_text = "\n".join(text_parts)
             messages = [
-                {"role": "system", "content": system_prompt.strip()}
+                {"role": "system", "content": system_prompt.strip()},
+                {"role": "user", "content": combined_text}
             ]
             
-            if image_parts:
-                # Use Groq's active vision model
-                model_name = "llama-3.2-11b-vision-preview"
-                content_payload = []
-                if combined_text:
-                    content_payload.append({"type": "text", "text": f"Please analyze this content:\n\n{combined_text}"})
-                else:
-                    content_payload.append({"type": "text", "text": "Please analyze this uploaded visual media content."})
-                    
-                # Groq supports up to 5 images per request
-                for img in image_parts[:5]:
-                    content_payload.append({
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{img['mime_type']};base64,{img['data']}"
-                        }
-                    })
-                messages.append({"role": "user", "content": content_payload})
-            else:
-                # Use Groq's active text model
-                model_name = "llama-3.3-70b-versatile"
-                messages.append({"role": "user", "content": combined_text})
-                
+            model_name = "llama-3.3-70b-versatile"
             print(f"DEBUG Groq: Sending request to model {model_name}...")
             response = client.chat.completions.create(
                 model=model_name,
