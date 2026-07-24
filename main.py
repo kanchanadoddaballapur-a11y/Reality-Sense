@@ -185,7 +185,21 @@ If you detect even a SINGLE one of these microscopic errors, or if the photo loo
 - Watermarks from AI generators (Veo, Runway, InVideo, Sora, Pika, or texts like "AI GENERATED") → 100% AI
 - Watermarks from regular video editors (CapCut, KineMaster, InShot) indicate HUMAN editing → LOW probability (0-15%)
 
-Return ONLY a JSON object in this exact format:
+=== ADVANCED CHAIN OF THOUGHT ANALYSIS ===
+To catch the most advanced AI (Midjourney v6, Flux), you MUST perform a deep forensic analysis BEFORE outputting the JSON. 
+You must output your internal reasoning inside a <thinking> block.
+In this block, meticulously inspect:
+1. Skin/Texture logic
+2. Physics and background consistency
+3. Anatomy (fingers, teeth symmetry)
+4. Lighting/Catchlights
+Only after completing this step-by-step analysis, output the JSON.
+
+Output format:
+<thinking>
+[Your step-by-step paranoid forensic analysis here]
+</thinking>
+```json
 {
   "probability": "XX%",
   "pattern_consistency": "Brief note on texture/writing patterns.",
@@ -193,7 +207,9 @@ Return ONLY a JSON object in this exact format:
   "noise_signature": "Brief note on visual noise or text tone.",
   "metadata_validation": "Brief note on file signatures or stylistic markers.",
   "explanation": "Clear, objective explanation of the rating."
-}"""
+}
+```
+"""
 
 
     # Separate text and image payloads for precise routing
