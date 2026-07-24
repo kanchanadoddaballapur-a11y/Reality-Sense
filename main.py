@@ -235,6 +235,10 @@ Return ONLY a JSON object in this exact format:
         return {"error": "API key not found. Please set GROQ_API_KEY or GEMINI_API_KEY in Render settings."}
     
     models_to_try = [
+        'gemini-2.0-flash',
+        'gemini-2.0-flash-lite',
+        'gemini-2.0-flash-exp',
+        'gemini-2.0-pro-exp-02-05',
         'gemini-2.5-flash',
     ]
     
