@@ -168,13 +168,14 @@ NOTE FOR PPTX: Bullet points and short titles are normal in slides. Only flag as
 - If an image looks "cinematic", "8k resolution", or like digital concept art, it is almost certainly AI.
 - Watermarks from AI tools (Midjourney, DALL-E, Stable Diffusion) → 100%
 
-=== REALISTIC AI / FLUX / MIDJOURNEY v6 ===
-Even if an image/video looks like a mundane, realistic camera photo, you MUST zoom in and look for microscopic hallucinations:
-- Nonsensical background text, warped letters, or unreadable signs
-- Asymmetrical pupils, mismatched earrings, or glasses merging into skin
-- Missing, extra, or fusing fingers and strange hand anatomy
-- Impossible physics in background architecture (stairs to nowhere, overlapping window frames)
-- If ANY of these microscopic structural errors exist, it is a REALISTIC AI GENERATION. Push probability HIGH (80-99%) even if the aesthetic looks like a real photo!
+=== PARANOIA DIRECTIVE FOR REALISTIC AI (Midjourney v6 / Flux) ===
+Modern AI generators perfectly mimic organic camera noise and mundane selfies. You must be PARANOID and highly skeptical.
+Zoom in and forcefully look for these microscopic hallucinations:
+1. Skin & Teeth: Are there zero organic pores? Are the teeth perfectly uniform or slightly misaligned in a non-human way?
+2. Eyes: Do the catchlights (reflections) in both eyes not match the physical lighting of the room?
+3. Anatomy: Are the fingers fusing? Is there a random phantom limb or missing earring?
+4. Physics: Does the subject's hair seamlessly "melt" into the blurred background? Do background lines (fences, window frames) suddenly vanish or misalign behind the subject?
+If you detect even a SINGLE one of these microscopic errors, or if the photo looks like a "perfect" casual portrait, you MUST flag it as a REALISTIC AI GENERATION. Push probability HIGH (85-99%)! DO NOT default to real just because it looks like a normal camera photo.
 
 === VIDEOS ===
 - Abrupt scene changes between frames (different people/places) = AI-assembled stock footage → 90-100%
