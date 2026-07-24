@@ -322,6 +322,44 @@ Return ONLY a JSON object in this exact format:
             
     is_all_quota = all('429' in e or 'quota' in e.lower() or 'resource_exhausted' in e.lower() for e in errors)
     
+    # ── GROQ VISION FALLBACK FOR IMAGES ──
+    # If Gemini failed on an image (e.g., quota exceeded), try Groq Vision!
+    if image_parts and GROQ_API_KEY:
+        try:
+            print("DEBUG: Gemini failed on images. Attempting Groq Vision Fallback...")
+            from groq import Groq
+            client = Groq(api_key=GROQ_API_KEY)
+            
+            content_payload = [{"type": "text", "text": "Critically analyze this image. Look deeply for 'hyper-realistic' artificial lighting, impossibly flawless skin (no pores/blemishes), or bokeh/blur that defies physical camera lenses. These are massive indicators of AI generation (Midjourney/Sora). If found, bias strongly towards AI."}]
+            valid_images = 0
+            for img in image_parts[:3]:
+                if isinstance(img, dict) and 'data' in img:
+                    content_payload.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{img.get('mime_type', 'image/jpeg')};base64,{img.get('data', '')}"
+                        }
+                    })
+                    valid_images += 1
+            
+            if valid_images > 0:
+                messages = [
+                    {"role": "system", "content": system_prompt.strip()},
+                    {"role": "user", "content": content_payload}
+                ]
+                
+                response = client.chat.completions.create(
+                    model="llama-3.2-11b-vision-preview",
+                    messages=messages,
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                    max_tokens=1024
+                )
+                raw_text = response.choices[0].message.content.strip()
+                print("DEBUG Groq Vision Fallback succeeded.")
+                return parse_loose_json(raw_text)
+        except Exception as groq_err:
+            print(f"DEBUG Groq Vision Fallback failed: {groq_err}")
     # ── VIVA PRESENTATION FAIL-SAFE FALLBACK ──
     # If the Gemini or Groq API crashes during the live presentation, NEVER show an error.
     # Instantly return a highly realistic local calculation so the app appears flawless.
