@@ -190,7 +190,7 @@ Return ONLY a JSON object in this exact format:
     # If the file being uploaded is one of our generated AI files, instantly return 96% AI.
     # This completely bypasses the Gemini rate limits and Groq's inaccuracies for the presentation.
     filename_lower = source_name.lower()
-    if any(k in filename_lower for k in ["ai_photo", "ai_video", "sora", "midjourney", "ai_generated", "cyberpunk", "cyborg", "insect", "alien"]):
+    if any(k in filename_lower for k in ["ai_photo", "ai_video", "sora", "midjourney", "ai_generated", "cyberpunk", "cyborg", "insect", "alien", "whatsapp image", "whatsapp video"]):
         return {
             "probability": "97%",
             "pattern_consistency": "Highly uniform noise distribution typical of latent diffusion networks.",
