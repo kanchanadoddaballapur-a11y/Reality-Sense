@@ -314,97 +314,8 @@ Return ONLY a JSON object in this exact format:
             errors.append(err_msg)
             continue
             
-    # ── VIVA PRESENTATION FAIL-SAFE FALLBACK ──
-    # If APIs crash (e.g. Quota Exhausted), fall back to Local Mathematical Pattern Analysis.
-    print(f"DEBUG: APIs failed ({'; '.join(errors)}). Using Local Mathematical Pattern Analysis.")
-    
-    is_ai = False
-    pattern_note = "Mathematical analysis of pixel structures."
-    noise_note = "Variance and noise profiling complete."
-    
-    # 1. Mathematical Visual Analysis (if images are present)
-    valid_image_bytes = None
-    for part in content_parts:
-        if isinstance(part, dict) and 'data' in part:
-            import base64 as _b64
-            valid_image_bytes = _b64.b64decode(part['data'])
-            break
-            
-    if valid_image_bytes:
-        try:
-            import cv2
-            import numpy as np
-            import io
-            from PIL import Image, ExifTags
-            
-            img = Image.open(io.BytesIO(valid_image_bytes))
-            
-            # Extract EXIF
-            has_camera_metadata = False
-            exif_data = img._getexif()
-            if exif_data:
-                for tag_id, value in exif_data.items():
-                    tag = ExifTags.TAGS.get(tag_id, tag_id)
-                    if tag in ['Make', 'Model', 'LensModel', 'DateTimeOriginal']:
-                        has_camera_metadata = True
-                        break
-            
-            # Analyze Noise / Edge Variance (Laplacian)
-            open_cv_image = np.array(img.convert('RGB'))
-            open_cv_image = open_cv_image[:, :, ::-1].copy()
-            gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
-            lap_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-            
-            # Analyze Structural Entropy
-            entropy = img.convert('L').entropy()
-            
-            # Analyze Color Saturation (AI tends to be hyper-vibrant or mathematically uniform)
-            hsv = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2HSV)
-            std_sat = hsv[:, :, 1].std()
-            
-            print(f"DEBUG Local Analysis: Laplacian={lap_var}, Entropy={entropy}, SatStd={std_sat}, EXIF={has_camera_metadata}")
-            
-            # Heuristic Logic
-            if not has_camera_metadata:
-                # Without physical camera EXIF, the image must perfectly match a biological noise profile to be deemed human.
-                # AI generations almost always fail at least one of these tight constraints.
-                if lap_var < 200 or lap_var > 600 or entropy < 7.2 or entropy > 7.5 or std_sat > 55 or std_sat < 15:
-                    is_ai = True
-                    pattern_note = f"Mathematical anomalies detected. (Entropy: {entropy:.2f}, Saturation StdDev: {std_sat:.1f}). Lacks organic camera EXIF."
-                    noise_note = f"Edge variance falls outside strict physical limits (Laplacian: {lap_var:.1f})."
-                else:
-                    pattern_note = f"Structural entropy falls within organic limits (Entropy: {entropy:.2f}). No native camera metadata found."
-                    noise_note = f"Standard physical noise distribution detected (Laplacian: {lap_var:.1f})."
-            else:
-                pattern_note = f"Native camera sensor metadata verified. Organic structural entropy (Entropy: {entropy:.2f})."
-                noise_note = f"Authentic hardware sensor noise signature (Laplacian: {lap_var:.1f})."
-                
-        except Exception as e:
-            print(f"DEBUG Local Analysis Failed: {e}")
-            
-    # 2. Text Analysis Fallback
-    text_content = str(content_parts).lower()
-    if "sora" in text_content or "midjourney" in text_content or "hyper-realistic" in text_content or "ai generated" in text_content:
-        is_ai = True
-        
-    if is_ai:
-        return {
-            "probability": "92%",
-            "pattern_consistency": pattern_note,
-            "structural_integrity": "Unnatural textural morphing detected across geometric edge boundaries.",
-            "noise_signature": noise_note,
-            "metadata_validation": "Pixel arrangement implies synthetic generative assembly.",
-            "explanation": "Local mathematical pattern analysis strongly indicates this media was artificially synthesized based on noise variance and structural anomalies."
-        }
-    else:
-        return {
-            "probability": "18%",
-            "pattern_consistency": pattern_note,
-            "structural_integrity": "Lighting dynamics and spatial logic map correctly to physical environments.",
-            "noise_signature": noise_note,
-            "metadata_validation": "Data structural signatures match standard physical limits.",
-            "explanation": "Local mathematical pattern analysis confirms this media aligns with organic, human-captured or human-written parameters."
-        }
+    # If Gemini completely fails, return the actual error so it can be debugged.
+    return {"error": f"AI Processing Failed. Please check quotas or API keys. Errors: {'; '.join(errors)}"}
 
 def login_required(f):
     @wraps(f)
@@ -558,38 +469,14 @@ def analyze():
     source_name = "Pasted Text"
     
     try:
-        # ─── INVISIBLE PRESENTATION TRIGGER ───
-        magic = request.form.get('magic_override')
-        if magic == 'real':
-            return jsonify({
-                "probability": "12%",
-                "pattern_consistency": "Organic inconsistencies and natural grain consistent with physical reality.",
-                "structural_integrity": "Lighting dynamics and spatial logic map correctly to physical environments.",
-                "noise_signature": "Standard sensor/lens noise artifacts detected without synthetic smoothing.",
-                "metadata_validation": "Data structural signatures match standard physical limits.",
-                "explanation": "Advanced deep neural analysis confirms this media aligns entirely with organic, human-captured parameters."
-            })
-        elif magic == 'ai':
-            return jsonify({
-                "probability": "98%",
-                "pattern_consistency": "Highly uniform noise distribution typical of latent diffusion networks.",
-                "structural_integrity": "Unnatural textural morphing detected across geometric edge boundaries.",
-                "noise_signature": "Mathematical precision in color saturation that defies physical lens dynamics.",
-                "metadata_validation": "Pixel arrangement implies synthetic generative assembly.",
-                "explanation": "Comprehensive neural analysis strongly indicates this media was artificially synthesized by a Generative AI model."
-            })
-        elif magic == 'realistic_ai':
-            return jsonify({
-                "probability": "84%",
-                "pattern_consistency": "High fidelity, but exhibits microscopic repeating patterns indicative of upscale GANs.",
-                "structural_integrity": "Near-perfect lighting logic, yet localized edge blurring betrays diffusion boundaries.",
-                "noise_signature": "Simulated film grain detected; mathematical uniformity contradicts organic sensor noise.",
-                "metadata_validation": "Missing primary native hardware sensor logs. Anomalous compression matrices.",
-                "explanation": "Though highly photorealistic, sub-pixel neural analysis reveals subtle but definitive generative AI artifacts."
-            })
-
         user = User.query.filter_by(email=session['user']['email']).first()
         file_hash = None
+        
+        # Check for URL
+        url = request.form.get('url')
+        if url:
+            source_name = url  
+            file_hash = None
         
         if 'text' in request.form and request.form['text'].strip():
             text_input = request.form['text'].strip()
