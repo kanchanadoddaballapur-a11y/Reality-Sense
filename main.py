@@ -168,6 +168,14 @@ NOTE FOR PPTX: Bullet points and short titles are normal in slides. Only flag as
 - If an image looks "cinematic", "8k resolution", or like digital concept art, it is almost certainly AI.
 - Watermarks from AI tools (Midjourney, DALL-E, Stable Diffusion) → 100%
 
+=== REALISTIC AI / FLUX / MIDJOURNEY v6 ===
+Even if an image/video looks like a mundane, realistic camera photo, you MUST zoom in and look for microscopic hallucinations:
+- Nonsensical background text, warped letters, or unreadable signs
+- Asymmetrical pupils, mismatched earrings, or glasses merging into skin
+- Missing, extra, or fusing fingers and strange hand anatomy
+- Impossible physics in background architecture (stairs to nowhere, overlapping window frames)
+- If ANY of these microscopic structural errors exist, it is a REALISTIC AI GENERATION. Push probability HIGH (80-99%) even if the aesthetic looks like a real photo!
+
 === VIDEOS ===
 - Abrupt scene changes between frames (different people/places) = AI-assembled stock footage → 90-100%
 - "Latent Space" anomalies: Swirling geometric noise, morphing shapes, impossible physics, seamless texture shifting, or subjects blending into the background (Sora/Runway signatures) → HIGH probability (85-100%)
