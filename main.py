@@ -20,7 +20,7 @@ import hashlib
 load_dotenv(override=True)
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
-CACHE_VERSION = "v5"
+CACHE_VERSION = "v6"
 
 # Disable SSL verification globally for local environment issues
 # SSL verification is handled by the system; manual clearing is disabled to avoid breaking gRPC.
@@ -171,7 +171,8 @@ NOTE FOR PPTX: Bullet points and short titles are normal in slides. Only flag as
 - Abrupt scene changes between frames (different people/places) = AI-assembled stock footage → 90-100%
 - Talking head with static background (HeyGen/D-ID pattern) → 85-100%
 - Continuous real footage of one person/event → LOW probability
-- Watermarks (Veo, Runway, InVideo, Sora, Pika) → 100%
+- Watermarks from AI generators (Veo, Runway, InVideo, Sora, Pika) → 100% AI
+- Watermarks from regular video editors (CapCut, KineMaster, InShot, VN, Filmora, VivaVideo) indicate HUMAN editing → LOW probability (0-15%)
 
 Return ONLY a JSON object in this exact format:
 {
