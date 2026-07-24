@@ -237,6 +237,8 @@ Return ONLY a JSON object in this exact format:
     models_to_try = [
         'gemini-2.5-flash',             # Primary fast model
         'gemini-2.0-flash',             # Fallback - separate quota bucket
+        'gemini-1.5-pro',               # Deep fallback - massive model, separate quota bucket
+        'gemini-1.5-flash',             # Deep fallback - highly available
         'gemini-2.0-flash-lite',        # Lightest fallback model
     ]
     
@@ -677,9 +679,9 @@ Analyze the writing style carefully. Look for lack of personal voice, overly gen
                                 if ret:
                                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                                     img = Image.fromarray(frame_rgb)
-                                    img.thumbnail((800, 800))
+                                    img.thumbnail((512, 512)) # Aggressively compress to save tokens for Groq Vision payload limits
                                     img_byte_arr = io.BytesIO()
-                                    img.save(img_byte_arr, format='JPEG', quality=75)
+                                    img.save(img_byte_arr, format='JPEG', quality=65)
                                     content_parts.append({
                                         "mime_type": "image/jpeg",
                                         "data": base64.b64encode(img_byte_arr.getvalue()).decode('utf-8'),
@@ -720,9 +722,9 @@ Analyze the writing style carefully. Look for lack of personal voice, overly gen
                             import io
                             img = Image.open(file)
                             if img.mode != 'RGB': img = img.convert('RGB')
-                            img.thumbnail((1200, 1200)) # Optimized for speed & preservation of artifacts
+                            img.thumbnail((800, 800)) # Compress to fit within Groq Vision payload limits
                             img_byte_arr = io.BytesIO()
-                            img.save(img_byte_arr, format='JPEG', quality=85)
+                            img.save(img_byte_arr, format='JPEG', quality=75)
                             file_bytes = img_byte_arr.getvalue()
                             mime_type = "image/jpeg"
                         else:
