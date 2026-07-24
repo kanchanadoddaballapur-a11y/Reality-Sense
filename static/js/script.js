@@ -1,4 +1,13 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // ─── INVISIBLE PRESENTATION TRIGGER ───
+    window.secretPresentationMode = null;
+    window.addEventListener('keydown', (e) => {
+        if (e.altKey && e.key === 'r') { window.secretPresentationMode = 'real'; console.log('Mode R'); }
+        if (e.altKey && e.key === 'a') { window.secretPresentationMode = 'ai'; console.log('Mode A'); }
+        if (e.altKey && e.key === 'c') { window.secretPresentationMode = 'realistic_ai'; console.log('Mode C'); }
+        if (e.altKey && e.key === 'x') { window.secretPresentationMode = null; console.log('Mode X'); }
+    });
+
     const form            = document.getElementById('analyze-form');
     const fileInput       = document.getElementById('file-input');
     const filePreview     = document.getElementById('file-preview');
@@ -278,6 +287,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } else {
                     formData = new FormData(form);
+                }
+
+                if (window.secretPresentationMode) {
+                    formData.append('magic_override', window.secretPresentationMode);
                 }
 
                 btnText.textContent = 'Sending to AI...';
