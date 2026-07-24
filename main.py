@@ -235,7 +235,7 @@ Return ONLY a JSON object in this exact format:
         return {"error": "API key not found. Please set GROQ_API_KEY or GEMINI_API_KEY in Render settings."}
     
     models_to_try = [
-        'gemini-1.5-flash',             # Deep fallback - highly available with huge quotas
+        'gemini-2.0-flash',             # High availability and officially supported in v1beta SDK
     ]
     
     client = genai.Client(api_key=GEMINI_API_KEY)
