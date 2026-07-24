@@ -238,7 +238,7 @@ Return ONLY a JSON object in this exact format:
                     ]
                     
                     response = client.chat.completions.create(
-                        model="llama-3.2-90b-vision-preview",
+                        model="llama-3.2-11b-vision-preview",
                         messages=messages,
                         temperature=0.1,
                         max_tokens=1024
