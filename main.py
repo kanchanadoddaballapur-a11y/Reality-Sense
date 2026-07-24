@@ -330,7 +330,7 @@ Return ONLY a JSON object in this exact format:
             from groq import Groq
             client = Groq(api_key=GROQ_API_KEY)
             
-            content_payload = [{"type": "text", "text": "Critically analyze this image. Look deeply for 'hyper-realistic' artificial lighting, impossibly flawless skin (no pores/blemishes), or bokeh/blur that defies physical camera lenses. These are massive indicators of AI generation (Midjourney/Sora). If found, bias strongly towards AI."}]
+            content_payload = [{"type": "text", "text": "Critically analyze this visual media (either a single image or 3 sequential frames extracted from a video). Look deeply for 'hyper-realistic' artificial lighting, impossibly flawless skin (no pores/blemishes), physics-defying temporal inconsistencies, or bokeh/blur that defies physical camera lenses. These are massive indicators of AI generation (Midjourney/Sora). If you detect these synthetic signatures, bias strongly towards a HIGH AI probability."}]
             valid_images = 0
             for img in image_parts[:3]:
                 if isinstance(img, dict) and 'data' in img:
@@ -671,6 +671,31 @@ Analyze the writing style carefully. Look for lack of personal voice, overly gen
                         file.save(temp_path)
                         
                         try:
+                            import cv2
+                            import io
+                            from PIL import Image
+                            cap = cv2.VideoCapture(temp_path)
+                            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                            # Extract 3 frames (Start, Middle, End) for Groq Vision Fallback
+                            for frame_idx in [total_frames//4, total_frames//2, (total_frames*3)//4]:
+                                cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_idx))
+                                ret, frame = cap.read()
+                                if ret:
+                                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                                    img = Image.fromarray(frame_rgb)
+                                    img.thumbnail((800, 800)) # Compress to save tokens
+                                    img_byte_arr = io.BytesIO()
+                                    img.save(img_byte_arr, format='JPEG', quality=75)
+                                    content_parts.append({
+                                        "mime_type": "image/jpeg",
+                                        "data": base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
+                                    })
+                            cap.release()
+                        except Exception as cv_err:
+                            print(f"Warning: Failed to extract backup video frames: {cv_err}")
+
+                        # Proceed with Gemini Video API
+                        try:
                             client = genai.Client(api_key=GEMINI_API_KEY)
                             uploaded_file = client.files.upload(file=temp_path, config={'display_name': file.filename})
                             
@@ -685,31 +710,7 @@ Analyze the writing style carefully. Look for lack of personal voice, overly gen
                                 
                             content_parts.append(uploaded_file)
                         except Exception as e:
-                            print(f"Video File API upload failed: {e}. Falling back to cv2 frame extraction for Groq Vision...")
-                            try:
-                                import cv2
-                                import io
-                                from PIL import Image
-                                cap = cv2.VideoCapture(temp_path)
-                                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                                cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, total_frames // 2))
-                                ret, frame = cap.read()
-                                cap.release()
-                                if ret:
-                                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                                    img = Image.fromarray(frame_rgb)
-                                    img.thumbnail((1200, 1200))
-                                    img_byte_arr = io.BytesIO()
-                                    img.save(img_byte_arr, format='JPEG', quality=85)
-                                    content_parts.append({
-                                        "mime_type": "image/jpeg",
-                                        "data": base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
-                                    })
-                                else:
-                                    raise Exception("Could not read frame from video.")
-                            except Exception as cv_err:
-                                print(f"cv2 fallback failed: {cv_err}")
-                                return jsonify({"error": "Failed to upload video for analysis. API Quota Exceeded and local extraction failed."}), 500
+                            print(f"Video File API upload failed: {e}. Relying solely on extracted frames for Groq Vision Fallback.")
                         finally:
                             if os.path.exists(temp_path): os.remove(temp_path)
                             
