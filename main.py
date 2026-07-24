@@ -356,7 +356,7 @@ Return ONLY a JSON object in this exact format:
                 ]
                 
                 response = client.chat.completions.create(
-                    model="llama-3.2-11b-vision-preview",
+                    model="llama-3.2-90b-vision-preview",
                     messages=messages,
                     response_format={"type": "json_object"},
                     temperature=0.1,
@@ -678,43 +678,48 @@ Analyze the writing style carefully. Look for lack of personal voice, overly gen
                         file.save(temp_path)
                         
                         try:
+                            # 1. Fallback Frame Extraction (if Gemini quota fails)
                             import cv2
                             import io
                             from PIL import Image
                             cap = cv2.VideoCapture(temp_path)
                             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                            # Extract 3 frames (Start, Middle, End) for Groq Vision Fallback
                             for frame_idx in [total_frames//4, total_frames//2, (total_frames*3)//4]:
                                 cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_idx))
                                 ret, frame = cap.read()
                                 if ret:
                                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                                     img = Image.fromarray(frame_rgb)
-                                    img.thumbnail((800, 800)) # Compress to save tokens
+                                    img.thumbnail((800, 800))
                                     img_byte_arr = io.BytesIO()
                                     img.save(img_byte_arr, format='JPEG', quality=75)
                                     content_parts.append({
                                         "mime_type": "image/jpeg",
-                                        "data": base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
+                                        "data": base64.b64encode(img_byte_arr.getvalue()).decode('utf-8'),
+                                        "is_video_frame": True
                                     })
                             cap.release()
                         except Exception as cv_err:
                             print(f"Warning: Failed to extract backup video frames: {cv_err}")
 
-                        # Proceed with Gemini Video API
+                        # 2. Main Gemini Video Upload Logic
                         try:
                             client = genai.Client(api_key=GEMINI_API_KEY)
+                            
+                            # Upload to Gemini File API
                             uploaded_file = client.files.upload(file=temp_path, config={'display_name': file.filename})
                             
                             import time
-                            # Poll until processing is complete (Videos are processed asynchronously)
                             while uploaded_file.state.name == "PROCESSING":
+                                print("DEBUG: Waiting for Gemini video processing...")
                                 time.sleep(2)
                                 uploaded_file = client.files.get(name=uploaded_file.name)
                             
                             if uploaded_file.state.name == "FAILED":
                                 raise Exception("AI video processing failed on Google servers.")
                                 
+                            # If successful, add the File API URI directly to the content parts
+                            # Note: we also have the frames in content_parts now for the fallback
                             content_parts.append(uploaded_file)
                         except Exception as e:
                             print(f"Video File API upload failed: {e}. Relying solely on extracted frames for Groq Vision Fallback.")
