@@ -219,6 +219,8 @@ Return ONLY a JSON object in this exact format:
                     else:
                         prompt_text = f"These are {len(valid_images)} sequential frames extracted from a video. Analyze them for temporal inconsistencies, morphing textures, or flickering lighting across the frames. If the frames show inconsistent structures, it is an AI generated video. Bias strongly towards HIGH AI probability if you see morphing."
                     
+                    prompt_text = system_prompt.strip() + "\n\n" + prompt_text
+                    
                     if combined_text.strip():
                         prompt_text += f"\n\nContext text from document:\n{combined_text[:1000]}"
                         
@@ -232,7 +234,6 @@ Return ONLY a JSON object in this exact format:
                         })
                         
                     messages = [
-                        {"role": "system", "content": system_prompt.strip()},
                         {"role": "user", "content": content_payload}
                     ]
                     
@@ -270,39 +271,9 @@ Return ONLY a JSON object in this exact format:
                 
         except Exception as e:
             print(f"DEBUG ERROR Groq failed: {str(e)}")
-            errors.append(str(e))
+            return {"error": f"Groq API Error: {str(e)}"}
     else:
         return {"error": "Groq API key not found. Please set GROQ_API_KEY in Render settings."}
-        
-    # ── VIVA PRESENTATION FAIL-SAFE FALLBACK ──
-    # If the Groq API crashes during the live presentation, NEVER show an error.
-    # Instantly return a highly realistic local calculation so the app appears flawless.
-    print(f"DEBUG: APIs failed ({'; '.join(errors)}). Using Local Fail-Safe Analysis for Presentation.")
-    text_content = str(content_parts).lower()
-    
-    is_ai = False
-    # Ensure the system relies purely on text analysis if visuals fail, NEVER on filename
-    if "sora" in text_content or "midjourney" in text_content or "hyper-realistic" in text_content:
-        is_ai = True
-        
-    if is_ai:
-        return {
-            "probability": "96%",
-            "pattern_consistency": "Highly uniform noise distribution typical of latent diffusion networks.",
-            "structural_integrity": "Unnatural textural morphing detected across geometric edge boundaries.",
-            "noise_signature": "Mathematical precision in color saturation that defies physical lens dynamics.",
-            "metadata_validation": "Pixel arrangement implies synthetic generative assembly.",
-            "explanation": "Deep neural analysis strongly indicates this media was artificially synthesized by a Generative AI model."
-        }
-    else:
-        return {
-            "probability": "14%",
-            "pattern_consistency": "Organic inconsistencies and natural grain consistent with physical reality.",
-            "structural_integrity": "Lighting dynamics and spatial logic map correctly to physical environments.",
-            "noise_signature": "Standard sensor/lens noise artifacts detected without synthetic smoothing.",
-            "metadata_validation": "Data structural signatures match standard human-operated equipment.",
-            "explanation": "Comprehensive analysis confirms this is authentic, human-captured or human-written content."
-        }
 
 def login_required(f):
     @wraps(f)
