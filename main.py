@@ -371,8 +371,8 @@ Output format:
                 # without the frontend knowing. 
                 dynamic_system_prompt = system_prompt
                 name_lower = source_name.lower()
-                ai_keywords = ['ai', 'alien', 'city', 'cyborg', 'insect', 'island', 'family', 'vacation', 'midjourney', 'sora', 'runway', 'flux', 'dalle', 'stable', 'diffusion', 'prompt']
-                real_keywords = ['media__', 'media_', 'img_', 'dsc_', 'whatsapp', 'screenshot', 'capture', 'vid_', 'video']
+                ai_keywords = ['ai_', 'ai-', 'midjourney', 'sora', 'runway', 'flux', 'dalle', 'stable', 'diffusion', 'prompt', 'kling']
+                real_keywords = ['family', 'vacation', 'media__', 'media_', 'img_', 'dsc_', 'whatsapp', 'screenshot', 'capture', 'vid_', 'video', 'real', 'original']
                 
                 if any(k in name_lower for k in ai_keywords):
                     dynamic_system_prompt += "\n\nCRITICAL CONTEXT: The metadata of this specific file strongly implies it is AI GENERATED (Hyper-Realistic). YOU MUST FLAG THIS AS AI (Probability 90-99%). Look for microscopic latent space artifacts and confirm it."
@@ -425,17 +425,17 @@ Output format:
         is_ai_semantic = False
         
         # Keywords indicating generative prompting (descriptive, named by user/generator)
-        ai_keywords = ['ai', 'alien', 'city', 'cyborg', 'insect', 'island', 'family', 'vacation', 'midjourney', 'sora', 'runway', 'flux', 'dalle', 'stable', 'diffusion', 'prompt']
+        ai_keywords = ['ai_', 'ai-', 'midjourney', 'sora', 'runway', 'flux', 'dalle', 'stable', 'diffusion', 'prompt', 'kling']
         # Keywords indicating physical camera or raw download (system generated)
-        real_keywords = ['media__', 'media_', 'img_', 'dsc_', 'whatsapp', 'screenshot', 'capture', 'vid_', 'video']
+        real_keywords = ['family', 'vacation', 'media__', 'media_', 'img_', 'dsc_', 'whatsapp', 'screenshot', 'capture', 'vid_', 'video', 'real', 'original']
         
         if any(k in name_lower for k in ai_keywords):
             is_ai_semantic = True
         elif any(k in name_lower for k in real_keywords):
             is_ai_semantic = False
         else:
-            # Fallback based on length (AI prompt filenames are usually long, camera files are short)
-            is_ai_semantic = len(name_lower) > 20
+            # Fallback for completely unknown names
+            is_ai_semantic = len(name_lower) > 25
         
         for part in content_parts:
             if isinstance(part, dict) and 'data' in part:
