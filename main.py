@@ -47,9 +47,13 @@ def get_calibrator():
     return _calibrator
 
 def query_hf_api(image_bytes):
+    import os
     API_URL = "https://api-inference.huggingface.co/models/prithivMLmods/Deep-Fake-Detector-Model"
     headers = {}
-    response = requests.post(API_URL, headers=headers, data=image_bytes, timeout=10)
+    hf_token = os.environ.get("HF_TOKEN")
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+    response = requests.post(API_URL, headers=headers, data=image_bytes, timeout=15)
     return response.json()
 
 # Disable SSL verification globally for local environment issues
@@ -366,13 +370,14 @@ Output format:
                         continue
                         
                     img = Image.open(io.BytesIO(raw_data)).convert('RGB')
-                    # Pre-resize images exactly to ViT native size (224x224) using fast NEAREST resampling
-                    # to drastically reduce upload size to the HuggingFace Inference API
-                    img.thumbnail((224, 224), Image.Resampling.NEAREST)
+                    # Pre-resize images using LANCZOS to 800x800. 
+                    # DO NOT use NEAREST to 224x224 as it introduces massive jagged edge artifacts 
+                    # that tricks the ML model into classifying real photos as AI-generated.
+                    img.thumbnail((800, 800), Image.Resampling.LANCZOS)
                     
                     # Convert back to bytes for the API
                     img_byte_arr = io.BytesIO()
-                    img.save(img_byte_arr, format='JPEG', quality=85)
+                    img.save(img_byte_arr, format='JPEG', quality=95)
                     images_to_detect.append(img_byte_arr.getvalue())
                 except Exception as e:
                     print(f"Image load error: {e}")
@@ -445,6 +450,38 @@ Output format:
                     "structural_integrity": "Evidence: " + " | ".join(evidence),
                     "noise_signature": "Computed using ML Vision Transformer",
                     "metadata_validation": "Calibrated Isotonic Regression Model"
+                }
+            else:
+                # HF API Failed / Rate-Limited. Fallback to STRICT mathematical forensics.
+                forensic_text = "\n".join(text_parts).lower()
+                final_prob = 0.50
+                evidence = ["Vision Transformer unavailable (API Rate Limited). Falling back to strict forensic metadata heuristics."]
+                
+                if "authenticity signal: found physical camera exif metadata" in forensic_text:
+                    final_prob = 0.10
+                    evidence.append("Physical camera EXIF metadata detected. Extremely likely to be real.")
+                elif "critical forensic flag: exif software tag indicates ai generation" in forensic_text:
+                    final_prob = 0.99
+                    evidence.append("Software signature of known AI generator found in EXIF.")
+                elif "critical forensic flag: detected abrupt structural scene change" in forensic_text:
+                    final_prob = 0.95
+                    evidence.append("Temporal analysis (MSE) shows abrupt scene changes typical of AI-assembled stock footage.")
+                else:
+                    evidence.append("No conclusive definitive metadata found. Consider adding HF_TOKEN to environment variables for deep neural network analysis.")
+                    
+                is_ai = final_prob >= 0.5
+                classification = "AI Generated" if is_ai else "Real"
+                
+                return {
+                    "classification": classification,
+                    "probability": f"{final_prob*100:.1f}%",
+                    "confidence": "Low",
+                    "evidence": evidence,
+                    "explanation": "Due to HuggingFace Serverless API rate limits, the primary Vision Transformer model was unavailable. Analysis was performed strictly using extracted forensic metadata (EXIF, Temporal MSE, Spectral Noise). Please configure HF_TOKEN on your server for robust neural network predictions.",
+                    "pattern_consistency": f"Classification: {classification} (Fallback)",
+                    "structural_integrity": "Evidence: " + " | ".join(evidence),
+                    "noise_signature": "Failed to reach ML Vision API",
+                    "metadata_validation": "Analyzed using basic heuristics only"
                 }
 
     # ── GROQ VISION BYPASS ──
