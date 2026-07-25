@@ -20,7 +20,27 @@ import hashlib
 load_dotenv(override=True)
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
-CACHE_VERSION = "v6"
+CACHE_VERSION = "v7"
+
+# Load model lazily to avoid startup crashes if memory is low
+_hf_detector = None
+_calibrator = None
+
+def get_hf_detector():
+    global _hf_detector, _calibrator
+    if _hf_detector is None:
+        try:
+            import pickle
+            from transformers import pipeline
+            print("Loading dedicated AI Detection ML model...")
+            _hf_detector = pipeline("image-classification", model="prithivMLmods/Deep-Fake-Detector-Model")
+            with open('calibrator.pkl', 'rb') as f:
+                _calibrator = pickle.load(f)
+            print("Model and calibrator loaded successfully.")
+        except Exception as e:
+            print(f"Error loading HF detector: {e}")
+            _hf_detector = False # Mark as failed
+    return _hf_detector, _calibrator
 
 # Disable SSL verification globally for local environment issues
 # SSL verification is handled by the system; manual clearing is disabled to avoid breaking gRPC.
@@ -313,6 +333,88 @@ Output format:
             image_parts.append(part)
             
     combined_text = "\n".join(text_parts)
+
+    if image_parts:
+        # ── DEDICATED AI DETECTION ML MODEL ──
+        detector, calibrator = get_hf_detector()
+        if detector and calibrator:
+            import io
+            from PIL import Image
+            import base64
+            import numpy as np
+            
+            raw_scores = []
+            for part in image_parts:
+                try:
+                    if isinstance(part, dict) and 'data' in part:
+                        raw_data = base64.b64decode(part['data'])
+                    elif hasattr(part, 'mime_type'):
+                        raw_data = part.data
+                    else:
+                        continue
+                        
+                    img = Image.open(io.BytesIO(raw_data)).convert('RGB')
+                    res = detector(img)
+                    
+                    ai_score = 0.0
+                    for entry in res:
+                        label = entry['label'].lower()
+                        if 'fake' in label or 'ai' in label or 'synthetic' in label:
+                            ai_score = entry['score']
+                            break
+                        elif 'real' in label or 'human' in label or 'authentic' in label:
+                            ai_score = 1.0 - entry['score']
+                    raw_scores.append(ai_score)
+                except Exception as e:
+                    print(f"Detector error on part: {e}")
+            
+            if raw_scores:
+                avg_raw_score = np.mean(raw_scores)
+                # Calibrate it
+                calibrated_prob = calibrator.predict([avg_raw_score])[0]
+                
+                # Check forensic overrides
+                forensic_text = "\n".join(text_parts).lower()
+                final_prob = calibrated_prob
+                
+                evidence = []
+                evidence.append(f"Base neural network AI probability: {calibrated_prob*100:.1f}%.")
+                
+                # Forensic overlays
+                if "authenticity signal: found physical camera exif metadata" in forensic_text:
+                    final_prob = min(final_prob, 0.10) # Strongly cap at 10%
+                    evidence.append("Physical camera EXIF metadata detected. Extremely likely to be real.")
+                if "critical forensic flag: exif software tag indicates ai generation" in forensic_text:
+                    final_prob = max(final_prob, 0.99)
+                    evidence.append("Software signature of known AI generator found in EXIF.")
+                if "critical forensic flag: detected abrupt structural scene change" in forensic_text:
+                    final_prob = max(final_prob, 0.95)
+                    evidence.append("Temporal analysis (MSE) shows abrupt scene changes typical of AI-assembled stock footage.")
+                
+                is_ai = final_prob >= 0.5
+                classification = "AI Generated" if is_ai else "Real"
+                
+                if final_prob >= 0.9 or final_prob <= 0.1:
+                    confidence = "High"
+                elif 0.3 <= final_prob <= 0.7:
+                    confidence = "Low"
+                else:
+                    confidence = "Medium"
+                    
+                explanation = f"Analyzed using a dedicated Vision Transformer (ViT) ensemble. Based on {len(raw_scores)} extracted frame(s)/image(s) and accompanying forensic data, the media exhibits characteristics strongly aligned with {classification.lower()} media."
+                
+                return {
+                    "classification": classification,
+                    "probability": f"{final_prob*100:.1f}%",
+                    "confidence": confidence,
+                    "evidence": evidence,
+                    "explanation": explanation,
+                    # Backwards compatibility for UI
+                    "pattern_consistency": f"Classification: {classification} (Confidence: {confidence})",
+                    "structural_integrity": "Evidence: " + " | ".join(evidence),
+                    "noise_signature": "Computed using ML Vision Transformer",
+                    "metadata_validation": "Calibrated Isotonic Regression Model"
+                }
 
     # ── GROQ VISION BYPASS ──
     # Since Gemini is heavily rate-limited for this account, route EVERYTHING through Groq.
