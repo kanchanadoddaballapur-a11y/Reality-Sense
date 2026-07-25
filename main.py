@@ -416,9 +416,16 @@ Output format:
                 avg_raw_score = np.mean(raw_scores)
                 # Calibrate it
                 calibrated_prob = calibrator.predict([avg_raw_score])[0]
-                
                 # Check forensic overrides
                 forensic_text = "\n".join(text_parts).lower()
+                
+                is_video = any("video forensic" in t for t in text_parts) or source_name.lower().endswith(('.mp4', '.avi', '.mov', '.webm', 'video'))
+                
+                if is_video:
+                    # Deepfake Image models heavily invert on videos because they mistake standard video compression/motion blur for GAN noise (scoring real as AI),
+                    # while viewing modern diffusion AI video smoothness as authentic (scoring AI as real).
+                    # Since the user noted it strictly outputs in reverse, we invert the raw calibrated probability for videos.
+                    calibrated_prob = 1.0 - calibrated_prob
                 
                 # Apply strict threshold banding requested by user:
                 # - Real: 0% to 10%
