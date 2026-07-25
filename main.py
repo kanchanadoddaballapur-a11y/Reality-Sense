@@ -343,7 +343,7 @@ Output format:
             import base64
             import numpy as np
             
-            raw_scores = []
+            images_to_detect = []
             for part in image_parts:
                 try:
                     if isinstance(part, dict) and 'data' in part:
@@ -354,19 +354,32 @@ Output format:
                         continue
                         
                     img = Image.open(io.BytesIO(raw_data)).convert('RGB')
-                    res = detector(img)
-                    
-                    ai_score = 0.0
-                    for entry in res:
-                        label = entry['label'].lower()
-                        if 'fake' in label or 'ai' in label or 'synthetic' in label:
-                            ai_score = entry['score']
-                            break
-                        elif 'real' in label or 'human' in label or 'authentic' in label:
-                            ai_score = 1.0 - entry['score']
-                    raw_scores.append(ai_score)
+                    # Pre-resize images to speed up Python-to-C++ tensor conversion
+                    img.thumbnail((384, 384))
+                    images_to_detect.append(img)
                 except Exception as e:
-                    print(f"Detector error on part: {e}")
+                    print(f"Image load error: {e}")
+
+            raw_scores = []
+            if images_to_detect:
+                try:
+                    # Batch infer to maximize CPU vectorization
+                    results = detector(images_to_detect)
+                    if len(images_to_detect) == 1:
+                        results = [results]
+                        
+                    for res in results:
+                        ai_score = 0.0
+                        for entry in res:
+                            label = entry['label'].lower()
+                            if 'fake' in label or 'ai' in label or 'synthetic' in label:
+                                ai_score = entry['score']
+                                break
+                            elif 'real' in label or 'human' in label or 'authentic' in label:
+                                ai_score = 1.0 - entry['score']
+                        raw_scores.append(ai_score)
+                except Exception as e:
+                    print(f"Batch inference failed: {e}")
             
             if raw_scores:
                 avg_raw_score = np.mean(raw_scores)
