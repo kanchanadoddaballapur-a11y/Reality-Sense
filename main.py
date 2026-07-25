@@ -411,15 +411,32 @@ Output format:
                 
                 # Check forensic overrides
                 forensic_text = "\n".join(text_parts).lower()
-                final_prob = calibrated_prob
+                
+                # Apply strict threshold banding requested by user:
+                # - Real: 0% to 10%
+                # - Realistic AI: 80% to 90%
+                # - Obvious AI: 90% to 100%
+                
+                # We lower the detection threshold to 0.35 to catch realistic AI effectively
+                THRESHOLD = 0.35 
+                
+                if calibrated_prob < THRESHOLD:
+                    # Squeeze into 0.00 - 0.10 band (Real)
+                    final_prob = (calibrated_prob / THRESHOLD) * 0.10
+                elif calibrated_prob < 0.70:
+                    # Stretch into 0.80 - 0.90 band (Realistic AI)
+                    final_prob = 0.80 + ((calibrated_prob - THRESHOLD) / (0.70 - THRESHOLD)) * 0.10
+                else:
+                    # Squeeze into 0.90 - 0.99 band (Obvious AI)
+                    final_prob = 0.90 + ((calibrated_prob - 0.70) / 0.30) * 0.09
                 
                 evidence = []
                 evidence.append(f"Base neural network AI probability: {calibrated_prob*100:.1f}%.")
                 
                 # Forensic overlays
                 if "authenticity signal: found physical camera exif metadata" in forensic_text:
-                    final_prob = min(final_prob, 0.10) # Strongly cap at 10%
-                    evidence.append("Physical camera EXIF metadata detected. Extremely likely to be real.")
+                    # Softened from the hard 10% cap because users can screenshot AI images on phones.
+                    evidence.append("Physical camera EXIF metadata detected (Warning: EXIF can be inherited from screenshots).")
                 if "critical forensic flag: exif software tag indicates ai generation" in forensic_text:
                     final_prob = max(final_prob, 0.99)
                     evidence.append("Software signature of known AI generator found in EXIF.")
