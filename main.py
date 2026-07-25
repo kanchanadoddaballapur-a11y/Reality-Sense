@@ -31,7 +31,13 @@ def get_hf_detector():
     if _hf_detector is None:
         try:
             import pickle
+            import torch
             from transformers import pipeline
+            
+            # PERFORMANCE: Prevent PyTorch from spinning up too many threads on Render's constrained CPU.
+            # High thread counts on low-vCPU environments cause severe context-switching lag.
+            torch.set_num_threads(1)
+            
             print("Loading dedicated AI Detection ML model...")
             _hf_detector = pipeline("image-classification", model="prithivMLmods/Deep-Fake-Detector-Model")
             with open('calibrator.pkl', 'rb') as f:
@@ -344,7 +350,9 @@ Output format:
             import numpy as np
             
             images_to_detect = []
-            for part in image_parts:
+            # PERFORMANCE: For ML inference, only analyze max 2 frames from videos.
+            # Forensics handles temporal analysis, so ML doesn't need all frames.
+            for part in image_parts[:2]:
                 try:
                     if isinstance(part, dict) and 'data' in part:
                         raw_data = base64.b64decode(part['data'])
@@ -354,8 +362,9 @@ Output format:
                         continue
                         
                     img = Image.open(io.BytesIO(raw_data)).convert('RGB')
-                    # Pre-resize images to speed up Python-to-C++ tensor conversion
-                    img.thumbnail((384, 384))
+                    # Pre-resize images exactly to ViT native size (224x224) using fast NEAREST resampling
+                    # to completely bypass the slow internal transformers tensor resampling
+                    img.thumbnail((224, 224), Image.Resampling.NEAREST)
                     images_to_detect.append(img)
                 except Exception as e:
                     print(f"Image load error: {e}")
