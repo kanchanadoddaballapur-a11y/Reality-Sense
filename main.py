@@ -114,30 +114,49 @@ ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Admin123")
 
 def parse_loose_json(text):
+    result = None
     # Try standard json loads first
     try:
-        return json.loads(text)
+        result = json.loads(text)
     except Exception as je:
         print(f"Standard JSON parsing failed: {je}. Trying loose regex parsing.")
         
-    result = {}
-    keys = ["probability", "pattern_consistency", "structural_integrity", "noise_signature", "metadata_validation", "explanation"]
-    for key in keys:
-        pattern = rf'"{key}"\s*:\s*"(.*?)"(?=\s*(?:,|\}}))'
-        match = re.search(pattern, text, re.DOTALL)
-        if match:
-            val = match.group(1).strip()
-            val = val.replace('\\"', '"')
-            result[key] = val
-        else:
-            result[key] = "Data unavailable."
-            
+        result = {}
+        keys = ["probability", "pattern_consistency", "structural_integrity", "noise_signature", "metadata_validation", "explanation"]
+        for key in keys:
+            pattern = rf'"{key}"\s*:\s*"(.*?)"(?=\s*(?:,|\}}))'
+            match = re.search(pattern, text, re.DOTALL)
+            if match:
+                val = match.group(1).strip()
+                val = val.replace('\\"', '"')
+                result[key] = val
+            else:
+                result[key] = "Data unavailable."
+                
     prob = result.get("probability", "0%")
-    prob_match = re.search(r'\d+%', prob)
+    prob_match = re.search(r'(\d+(?:\.\d+)?)', str(prob))
     if prob_match:
-        result["probability"] = prob_match.group(0)
+        try:
+            prob_val = float(prob_match.group(1)) / 100.0
+            # Apply user's strict banding to LLM outputs too
+            THRESHOLD = 0.50
+            if prob_val < THRESHOLD:
+                final_prob = (prob_val / THRESHOLD) * 0.10
+            elif prob_val < 0.80:
+                final_prob = 0.80 + ((prob_val - THRESHOLD) / (0.80 - THRESHOLD)) * 0.10
+            else:
+                final_prob = 0.90 + ((prob_val - 0.80) / 0.20) * 0.09
+                
+            result["probability"] = f"{final_prob*100:.1f}%"
+            
+            # Ensure classification matches strict banding
+            is_ai = final_prob >= 0.5
+            result["classification"] = "AI Generated" if is_ai else "Real"
+        except:
+            result["probability"] = prob
     else:
         result["probability"] = "0%"
+        result["classification"] = "Real"
         
     return result
 
@@ -347,8 +366,9 @@ Output format:
             image_parts.append(part)
             
     combined_text = "\n".join(text_parts)
+    is_video_analysis = any("video forensic" in t.lower() for t in text_parts) or source_name.lower().endswith(('.mp4', '.avi', '.mov', '.webm', 'video'))
 
-    if image_parts:
+    if image_parts and not is_video_analysis:
         # ── DEDICATED AI DETECTION ML API (HUGGINGFACE) ──
         calibrator = get_calibrator()
         if calibrator:
@@ -418,14 +438,6 @@ Output format:
                 calibrated_prob = calibrator.predict([avg_raw_score])[0]
                 # Check forensic overrides
                 forensic_text = "\n".join(text_parts).lower()
-                
-                is_video = any("video forensic" in t for t in text_parts) or source_name.lower().endswith(('.mp4', '.avi', '.mov', '.webm', 'video'))
-                
-                if is_video:
-                    # Deepfake Image models heavily invert on videos because they mistake standard video compression/motion blur for GAN noise (scoring real as AI),
-                    # while viewing modern diffusion AI video smoothness as authentic (scoring AI as real).
-                    # Since the user noted it strictly outputs in reverse, we invert the raw calibrated probability for videos.
-                    calibrated_prob = 1.0 - calibrated_prob
                 
                 # Apply strict threshold banding requested by user:
                 # - Real: 0% to 10%
