@@ -253,11 +253,11 @@ def extract_video_forensics(frame_files):
         report.append(f"FORENSIC METRIC: Max Inter-frame MSE = {max_mse:.2f}.")
         
         if max_mse > 3000:
-            report.append("CRITICAL FORENSIC FLAG: Detected abrupt structural scene change between frames. Real continuous video usually has smooth transitions. This strongly indicates AI-assembled stock footage.")
+            report.append("FORENSIC NOTE: Detected abrupt structural scene change between frames. This is common in edited videos (like vlogs) but can also indicate AI-assembled stock footage.")
         elif mean_mse < 5:
-            report.append("CRITICAL FORENSIC FLAG: Detected abnormally low inter-frame motion. This strongly indicates an AI talking-head (e.g., HeyGen, D-ID) where the background is perfectly static.")
+            report.append("FORENSIC NOTE: Detected abnormally low inter-frame motion. This could be a static tripod shot, a screen recording, or an AI talking-head.")
         else:
-            report.append("AUTHENTICITY SIGNAL: Inter-frame motion is consistent with continuous natural camera capture.")
+            report.append("FORENSIC NOTE: Inter-frame motion is smooth and continuous.")
             
     except Exception as e:
         report.append(f"Video forensic extraction failed: {e}")
@@ -358,9 +358,17 @@ Output format:
             import numpy as np
             
             images_to_detect = []
-            # PERFORMANCE: For ML inference, only analyze max 2 frames from videos.
-            # Forensics handles temporal analysis, so ML doesn't need all frames.
-            for part in image_parts[:2]:
+            # PERFORMANCE: For ML inference, sample frames from the middle of the video (avoiding black/intro frames).
+            # If it's an image, image_parts just has 1 item, so we take it.
+            # If it's a video, image_parts has multiple frames, we take up to 2 frames from the middle.
+            num_parts = len(image_parts)
+            if num_parts > 2:
+                mid = num_parts // 2
+                frames_to_test = [image_parts[mid], image_parts[min(mid+1, num_parts-1)]]
+            else:
+                frames_to_test = image_parts
+
+            for part in frames_to_test:
                 try:
                     if isinstance(part, dict) and 'data' in part:
                         raw_data = base64.b64decode(part['data'])
@@ -440,9 +448,6 @@ Output format:
                 if "critical forensic flag: exif software tag indicates ai generation" in forensic_text:
                     final_prob = max(final_prob, 0.99)
                     evidence.append("Software signature of known AI generator found in EXIF.")
-                if "critical forensic flag: detected abrupt structural scene change" in forensic_text:
-                    final_prob = max(final_prob, 0.95)
-                    evidence.append("Temporal analysis (MSE) shows abrupt scene changes typical of AI-assembled stock footage.")
                 
                 is_ai = final_prob >= 0.5
                 classification = "AI Generated" if is_ai else "Real"
