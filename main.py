@@ -137,6 +137,99 @@ def extract_text_from_bytes(file_bytes, filename):
     
     return text.strip()
 
+import numpy as np
+import cv2
+from PIL import Image, ExifTags
+
+def extract_image_forensics(file_bytes):
+    report = []
+    try:
+        img = Image.open(io.BytesIO(file_bytes))
+        
+        # 1. EXIF Analysis
+        exif = img.getexif()
+        if exif:
+            exif_data = {ExifTags.TAGS.get(k, k): v for k, v in exif.items()}
+            software = exif_data.get('Software', '').lower()
+            if any(ai_tag in software for ai_tag in ['midjourney', 'dall-e', 'stable diffusion', 'comfyui', 'flux']):
+                report.append(f"CRITICAL FORENSIC FLAG: EXIF Software tag indicates AI generation ({software}).")
+            elif 'Make' in exif_data or 'Model' in exif_data:
+                make = exif_data.get('Make', 'Unknown')
+                model = exif_data.get('Model', 'Unknown')
+                report.append(f"AUTHENTICITY SIGNAL: Found physical camera EXIF metadata (Make: {make}, Model: {model}). This strongly suggests a real photograph.")
+        else:
+            report.append("FORENSIC NOTE: No EXIF metadata found. This is common in web images but also in AI generations.")
+            
+        # 2. Spectral (FFT) Analysis
+        if img.mode != 'L':
+            gray_img = img.convert('L')
+        else:
+            gray_img = img
+            
+        np_img = np.array(gray_img)
+        np_img = cv2.resize(np_img, (512, 512))
+        f_trans = np.fft.fft2(np_img)
+        fshift = np.fft.fftshift(f_trans)
+        magnitude_spectrum = 20 * np.log(np.abs(fshift) + 1e-8)
+        
+        # Calculate high frequency energy (often elevated in GANs/Diffusion)
+        center_y, center_x = magnitude_spectrum.shape[0] // 2, magnitude_spectrum.shape[1] // 2
+        # Mask out the low frequencies (center 100x100)
+        mask = np.ones_like(magnitude_spectrum)
+        mask[max(0, center_y-50):center_y+50, max(0, center_x-50):center_x+50] = 0
+        high_freq_energy = np.mean(magnitude_spectrum * mask)
+        report.append(f"FORENSIC METRIC: High Frequency Energy Score = {high_freq_energy:.2f}. (Extremely high values > 180 may indicate AI synthesis; very low values < 100 may indicate unnatural blurring).")
+        
+        # 3. Noise Analysis
+        noise = cv2.Laplacian(np_img, cv2.CV_64F).var()
+        report.append(f"FORENSIC METRIC: Sensor Noise Variance = {noise:.2f}. (Real photos typically have natural sensor noise > 100. Values < 20 suggest unnatural synthetic smoothness, typical of AI).")
+
+    except Exception as e:
+        report.append(f"Forensic extraction failed: {e}")
+        
+    return "\n".join(report)
+
+def extract_video_forensics(frame_files):
+    # Takes a list of raw image bytes (frames)
+    report = []
+    try:
+        if not frame_files or len(frame_files) < 2:
+            return "FORENSIC NOTE: Insufficient frames for temporal analysis."
+            
+        frames = []
+        for file_bytes, _ in frame_files:
+            np_arr = np.frombuffer(file_bytes, np.uint8)
+            img = cv2.imdecode(np_arr, cv2.IMREAD_GRAYSCALE)
+            if img is not None:
+                frames.append(cv2.resize(img, (256, 256)))
+                
+        if len(frames) < 2:
+            return "FORENSIC NOTE: Could not decode enough frames for temporal analysis."
+            
+        # Calculate inter-frame MSE (Mean Squared Error)
+        mses = []
+        for i in range(1, len(frames)):
+            mse = np.mean((frames[i].astype("float") - frames[i-1].astype("float")) ** 2)
+            mses.append(mse)
+            
+        mean_mse = np.mean(mses)
+        max_mse = np.max(mses)
+        
+        report.append(f"FORENSIC METRIC: Mean Inter-frame MSE = {mean_mse:.2f}. (Very high > 2000 suggests abrupt scene changes or stitched stock footage, typical of AI video generators).")
+        report.append(f"FORENSIC METRIC: Max Inter-frame MSE = {max_mse:.2f}.")
+        
+        if max_mse > 3000:
+            report.append("CRITICAL FORENSIC FLAG: Detected abrupt structural scene change between frames. Real continuous video usually has smooth transitions. This strongly indicates AI-assembled stock footage.")
+        elif mean_mse < 5:
+            report.append("CRITICAL FORENSIC FLAG: Detected abnormally low inter-frame motion. This strongly indicates an AI talking-head (e.g., HeyGen, D-ID) where the background is perfectly static.")
+        else:
+            report.append("AUTHENTICITY SIGNAL: Inter-frame motion is consistent with continuous natural camera capture.")
+            
+    except Exception as e:
+        report.append(f"Video forensic extraction failed: {e}")
+        
+    return "\n".join(report)
+
 # google.genai client is instantiated per-call in analyze_multimodal
 
 def analyze_multimodal(content_parts, source_name="Unknown"):
@@ -163,36 +256,32 @@ STRONG HUMAN SIGNALS (push probability LOW — 0-25%):
 NOTE FOR PPTX: Bullet points and short titles are normal in slides. Only flag as AI if the LANGUAGE STYLE is clearly AI-generated (uses LLM filler phrases, generic corporate tone, etc.).
 
 === IMAGES ===
-- Authentic photos: natural lens noise, imperfect lighting, organic asymmetrical details, and natural grain → LOW probability (0-25%)
-- AI images: "Hyper-realistic" or "too perfect" lighting, impossibly flawless skin, overly saturated cinematic colors, mathematical symmetry, background blurring (bokeh) that defies physics, or ANY surreal/digital art elements → HIGH probability (80-100%)
-- If an image looks "cinematic", "8k resolution", or like digital concept art, it is almost certainly AI.
-- Watermarks from AI tools (Midjourney, DALL-E, Stable Diffusion) → 100%
-
-=== PARANOIA DIRECTIVE FOR REALISTIC AI (Midjourney v6 / Flux) ===
-Modern AI generators perfectly mimic organic camera noise and mundane selfies. You must be PARANOID and highly skeptical.
-Zoom in and forcefully look for these microscopic hallucinations:
-1. Skin & Teeth: Are there zero organic pores? Are the teeth perfectly uniform or slightly misaligned in a non-human way?
-2. Eyes: Do the catchlights (reflections) in both eyes not match the physical lighting of the room?
-3. Anatomy: Are the fingers fusing? Is there a random phantom limb or missing earring?
-4. Physics: Does the subject's hair seamlessly "melt" into the blurred background? Do background lines (fences, window frames) suddenly vanish or misalign behind the subject?
-If you detect even a SINGLE one of these microscopic errors, or if the photo looks like a "perfect" casual portrait, you MUST flag it as a REALISTIC AI GENERATION. Push probability HIGH (85-99%)! DO NOT default to real just because it looks like a normal camera photo.
+- Authentic photos: natural lens noise, imperfect lighting, organic asymmetrical details, natural grain, and physical camera EXIF metadata → LOW probability (0-10%)
+- DO NOT CLASSIFY REALISTIC REAL PHOTOS AS AI GENERATED.
+- AI images: "Hyper-realistic" lighting, impossible flawless skin, mathematical symmetry, or ANY surreal/digital art elements → HIGH probability (90-100%) ONLY when there is strong evidence.
+- You will be provided with FORENSIC METRICS (EXIF, FFT Noise Variance, High Frequency Energy). Heavily weight these metrics. If camera EXIF is present, strongly bias towards real (0-10%).
 
 === VIDEOS ===
-- Abrupt scene changes between frames (different people/places) = AI-assembled stock footage → 90-100%
-- "Latent Space" anomalies: Swirling geometric noise, morphing shapes, impossible physics, seamless texture shifting, or subjects blending into the background (Sora/Runway signatures) → HIGH probability (85-100%)
-- Talking head with static background (HeyGen/D-ID pattern) → 85-100%
-- Continuous real footage of one person/event with natural camera shake → LOW probability
-- Watermarks from AI generators (Veo, Runway, InVideo, Sora, Pika, or texts like "AI GENERATED") → 100% AI
-- Watermarks from regular video editors (CapCut, KineMaster, InShot) indicate HUMAN editing → LOW probability (0-15%)
+- You will be provided with FORENSIC METRICS (Inter-frame MSE) analyzing temporal consistency.
+- Abrupt scene changes between frames (high MSE) = AI-assembled stock footage → 90-100%
+- Talking head with static background (low MSE) (HeyGen/D-ID pattern) → 85-100%
+- Continuous real footage of one person/event with natural motion (moderate MSE) → LOW probability (0-10%)
+- AI-generated or deepfake videos should receive 90%+ AI probability ONLY when there is strong evidence.
+
+=== CONFIDENCE CALIBRATION ===
+- DO NOT GUESS.
+- If confidence is low or evidence is ambiguous, return a moderate score (30-70%) rather than 90%+.
+- Reserve scores above 90% ONLY for highly confident detections with strong visual or forensic evidence.
+- Real recorded videos and photos should typically receive 0-10% AI probability.
 
 === ADVANCED CHAIN OF THOUGHT ANALYSIS ===
 To catch the most advanced AI (Midjourney v6, Flux), you MUST perform a deep forensic analysis BEFORE outputting the JSON. 
 You must output your internal reasoning inside a <thinking> block.
 In this block, meticulously inspect:
-1. Skin/Texture logic
-2. Physics and background consistency
-3. Anatomy (fingers, teeth symmetry)
-4. Lighting/Catchlights
+1. Forensic Data (EXIF, Noise Variance, MSE) provided in the context.
+2. Skin/Texture logic and lighting consistency.
+3. Physics, shadows, and background consistency.
+4. Anatomy (fingers, teeth symmetry).
 Only after completing this step-by-step analysis, output the JSON.
 
 Output format:
@@ -205,7 +294,7 @@ Output format:
   "pattern_consistency": "Brief note on texture/writing patterns.",
   "structural_integrity": "Brief note on layout, continuity, or logic.",
   "noise_signature": "Brief note on visual noise or text tone.",
-  "metadata_validation": "Brief note on file signatures or stylistic markers.",
+  "metadata_validation": "Brief note on file signatures, EXIF, or stylistic markers.",
   "explanation": "Clear, objective explanation of the rating."
 }
 ```
@@ -683,6 +772,9 @@ def analyze():
 They are keyframes extracted at equal intervals from the SAME video file named '{video_name}'.
 Analyze them COLLECTIVELY as a video, NOT as individual images.
 
+VIDEO FORENSIC ANALYSIS REPORT:
+{extract_video_forensics(raw_frames)}
+
 Key things to check across ALL frames together:
 1. Do the people, locations, or scenes change dramatically between frames? (stock footage assembly = AI-made)
 2. Are there text overlays, titles, or lower-thirds visible? (AI video editor signature)
@@ -827,6 +919,10 @@ Analyze the writing style carefully. Look for lack of personal voice, overly gen
                     else:
                         # Image file processing
                         if mime_type.startswith('image/'):
+                            # Run forensic extraction before resizing and converting
+                            forensic_report = extract_image_forensics(file_bytes)
+                            content_parts.append(f"IMAGE FORENSIC ANALYSIS REPORT:\n{forensic_report}")
+                            
                             from PIL import Image
                             import io
                             img = Image.open(file)
