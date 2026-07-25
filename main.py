@@ -444,18 +444,19 @@ Output format:
                 # - Realistic AI: 80% to 90%
                 # - Obvious AI: 90% to 100%
                 
-                # We restore the detection threshold to 0.50 to prevent false positives for real images
-                THRESHOLD = 0.50 
+                # Passport photos and heavily edited real photos often score around 0.50 - 0.65.
+                # We raise the AI threshold to 0.70 to force these ambiguous real photos into the 0-10% band.
+                THRESHOLD = 0.70 
                 
                 if calibrated_prob < THRESHOLD:
                     # Squeeze into 0.00 - 0.10 band (Real)
                     final_prob = (calibrated_prob / THRESHOLD) * 0.10
-                elif calibrated_prob < 0.80:
+                elif calibrated_prob < 0.85:
                     # Stretch into 0.80 - 0.90 band (Realistic AI)
-                    final_prob = 0.80 + ((calibrated_prob - THRESHOLD) / (0.80 - THRESHOLD)) * 0.10
+                    final_prob = 0.80 + ((calibrated_prob - THRESHOLD) / (0.85 - THRESHOLD)) * 0.10
                 else:
                     # Squeeze into 0.90 - 0.99 band (Obvious AI)
-                    final_prob = 0.90 + ((calibrated_prob - 0.80) / 0.20) * 0.09
+                    final_prob = 0.90 + ((calibrated_prob - 0.85) / 0.15) * 0.09
                 
                 evidence = []
                 evidence.append(f"Base neural network AI probability: {calibrated_prob*100:.1f}%.")
