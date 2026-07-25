@@ -28,25 +28,29 @@ _calibrator = None
 
 def get_hf_detector():
     global _hf_detector, _calibrator
-    if _hf_detector is None:
+import requests
+
+# Load calibrator lazily to avoid startup crashes if memory is low
+_calibrator = None
+
+def get_calibrator():
+    global _calibrator
+    if _calibrator is None:
         try:
             import pickle
-            import torch
-            from transformers import pipeline
-            
-            # PERFORMANCE: Prevent PyTorch from spinning up too many threads on Render's constrained CPU.
-            # High thread counts on low-vCPU environments cause severe context-switching lag.
-            torch.set_num_threads(1)
-            
-            print("Loading dedicated AI Detection ML model...")
-            _hf_detector = pipeline("image-classification", model="prithivMLmods/Deep-Fake-Detector-Model")
             with open('calibrator.pkl', 'rb') as f:
                 _calibrator = pickle.load(f)
-            print("Model and calibrator loaded successfully.")
+            print("Calibrator loaded successfully.")
         except Exception as e:
-            print(f"Error loading HF detector: {e}")
-            _hf_detector = False # Mark as failed
-    return _hf_detector, _calibrator
+            print(f"Error loading calibrator: {e}")
+            _calibrator = False # Mark as failed
+    return _calibrator
+
+def query_hf_api(image_bytes):
+    API_URL = "https://api-inference.huggingface.co/models/prithivMLmods/Deep-Fake-Detector-Model"
+    headers = {}
+    response = requests.post(API_URL, headers=headers, data=image_bytes, timeout=10)
+    return response.json()
 
 # Disable SSL verification globally for local environment issues
 # SSL verification is handled by the system; manual clearing is disabled to avoid breaking gRPC.
@@ -341,9 +345,9 @@ Output format:
     combined_text = "\n".join(text_parts)
 
     if image_parts:
-        # ── DEDICATED AI DETECTION ML MODEL ──
-        detector, calibrator = get_hf_detector()
-        if detector and calibrator:
+        # ── DEDICATED AI DETECTION ML API (HUGGINGFACE) ──
+        calibrator = get_calibrator()
+        if calibrator:
             import io
             from PIL import Image
             import base64
@@ -363,32 +367,37 @@ Output format:
                         
                     img = Image.open(io.BytesIO(raw_data)).convert('RGB')
                     # Pre-resize images exactly to ViT native size (224x224) using fast NEAREST resampling
-                    # to completely bypass the slow internal transformers tensor resampling
+                    # to drastically reduce upload size to the HuggingFace Inference API
                     img.thumbnail((224, 224), Image.Resampling.NEAREST)
-                    images_to_detect.append(img)
+                    
+                    # Convert back to bytes for the API
+                    img_byte_arr = io.BytesIO()
+                    img.save(img_byte_arr, format='JPEG', quality=85)
+                    images_to_detect.append(img_byte_arr.getvalue())
                 except Exception as e:
                     print(f"Image load error: {e}")
 
             raw_scores = []
             if images_to_detect:
                 try:
-                    # Batch infer to maximize CPU vectorization
-                    results = detector(images_to_detect)
-                    if len(images_to_detect) == 1:
-                        results = [results]
-                        
-                    for res in results:
-                        ai_score = 0.0
-                        for entry in res:
-                            label = entry['label'].lower()
-                            if 'fake' in label or 'ai' in label or 'synthetic' in label:
-                                ai_score = entry['score']
-                                break
-                            elif 'real' in label or 'human' in label or 'authentic' in label:
-                                ai_score = 1.0 - entry['score']
-                        raw_scores.append(ai_score)
+                    for img_bytes in images_to_detect:
+                        res = query_hf_api(img_bytes)
+                        # res is a list of dicts like [{'label': 'Fake', 'score': 0.9}, ...]
+                        if isinstance(res, list):
+                            ai_score = 0.0
+                            for entry in res:
+                                label = entry.get('label', '').lower()
+                                score = entry.get('score', 0.0)
+                                if 'fake' in label or 'ai' in label or 'synthetic' in label:
+                                    ai_score = score
+                                    break
+                                elif 'real' in label or 'human' in label or 'authentic' in label:
+                                    ai_score = 1.0 - score
+                            raw_scores.append(ai_score)
+                        elif isinstance(res, dict) and "error" in res:
+                            print(f"HF API Error: {res['error']}")
                 except Exception as e:
-                    print(f"Batch inference failed: {e}")
+                    print(f"API inference failed: {e}")
             
             if raw_scores:
                 avg_raw_score = np.mean(raw_scores)
